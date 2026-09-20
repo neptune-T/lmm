@@ -46,6 +46,19 @@ __all__ = [
 ]
 
 
+#: joint_positions indices owned by each gripper's two carriages, measured on
+#: the live A800 runtime (2026-09-20). Link ids are NOT joint indices: the arm
+#: occupies links 20-25 / 43-48 but jp indices 8-13 / 16-21.
+CARRIAGE_JP_INDICES: dict[int, tuple[int, int]] = {0: (15, 14), 1: (23, 22)}
+
+#: Measured control period. One env.step advances exactly 1/120 s of sim time,
+#: confirmed independently by yaw (0.5/120 rad) and forward (0.25/120 m).
+CONTROL_HZ = 120.0
+
+#: Carriage travel at full open, from the URDF and MobileManipulatorParams.
+GRIPPER_OPEN_M = 0.044
+
+
 @dataclass(frozen=True)
 class BaseLimits:
     """Differential-drive scaling from the Habitat overlay.

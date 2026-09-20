@@ -9,35 +9,56 @@
   },
   "state_dim": 14,
   "state_labels": [
-    "left_joint_0_rad", "left_joint_1_rad", "left_joint_2_rad",
-    "left_joint_3_rad", "left_joint_4_rad", "left_joint_5_rad",
+    "left_joint_0_rad",
+    "left_joint_1_rad",
+    "left_joint_2_rad",
+    "left_joint_3_rad",
+    "left_joint_4_rad",
+    "left_joint_5_rad",
     "left_gripper_closed_fraction",
-    "right_joint_0_rad", "right_joint_1_rad", "right_joint_2_rad",
-    "right_joint_3_rad", "right_joint_4_rad", "right_joint_5_rad",
+    "right_joint_0_rad",
+    "right_joint_1_rad",
+    "right_joint_2_rad",
+    "right_joint_3_rad",
+    "right_joint_4_rad",
+    "right_joint_5_rad",
     "right_gripper_closed_fraction"
   ],
   "action_dim": 16,
   "action_labels": [
-    "left_joint_0_absolute_rad", "left_joint_1_absolute_rad",
-    "left_joint_2_absolute_rad", "left_joint_3_absolute_rad",
-    "left_joint_4_absolute_rad", "left_joint_5_absolute_rad",
+    "left_joint_0_absolute_rad",
+    "left_joint_1_absolute_rad",
+    "left_joint_2_absolute_rad",
+    "left_joint_3_absolute_rad",
+    "left_joint_4_absolute_rad",
+    "left_joint_5_absolute_rad",
     "left_gripper_closed_fraction",
-    "right_joint_0_absolute_rad", "right_joint_1_absolute_rad",
-    "right_joint_2_absolute_rad", "right_joint_3_absolute_rad",
-    "right_joint_4_absolute_rad", "right_joint_5_absolute_rad",
+    "right_joint_0_absolute_rad",
+    "right_joint_1_absolute_rad",
+    "right_joint_2_absolute_rad",
+    "right_joint_3_absolute_rad",
+    "right_joint_4_absolute_rad",
+    "right_joint_5_absolute_rad",
     "right_gripper_closed_fraction",
-    "base_forward_velocity_mps", "base_yaw_velocity_radps"
+    "base_forward_velocity_mps",
+    "base_yaw_velocity_radps"
   ],
   "delta_action_mask_length": 14,
   "delta_action_mask_note": "14 elements, not 16. DeltaActions computes dims=len(mask) and indexes state[..., :dims]; state is 14-D, so a 16-element mask raises. The prefix stopping at 14 is what keeps base dims absolute.",
   "base": {
     "semantics": "forward/yaw differential drive",
-    "policy_units": ["m/s", "rad/s"],
+    "policy_units": [
+      "m/s",
+      "rad/s"
+    ],
     "habitat_units": "normalized [-1, 1] scaled by lin_speed / ang_speed",
     "lin_speed_mps": 0.25,
     "ang_speed_radps": 0.5,
     "conversion_site": "lmm.env.wxai_habitat_bridge.to_habitat_base",
-    "over_limit_policy": "refuse, do not saturate"
+    "over_limit_policy": "refuse, do not saturate",
+    "forward_sign": "positive base_vel[0] moves along the robot's local +x in base_transformation",
+    "yaw_sign": "positive base_vel[1] DECREASES arctan2(heading.z, heading.x); magnitude ang_speed/120 per step",
+    "verified_on": "A800 2026-09-20, 6 headings x 60 steps in free space, 2.0833 mm/step at every heading"
   },
   "normalization": {
     "asset_id": null,
@@ -45,8 +66,35 @@
     "note": "trossen / trossen_mobile statistics describe dual ViperX arms and a Slate omnidirectional base. They are dimensionally compatible (14-D state, 16-D action) but semantically wrong for WXAI, and dims 14-15 have been redefined from vx/vy to forward/yaw. New statistics MUST be computed from WXAI data before fine-tuning."
   },
   "control": {
-    "nominal_hz": 50,
-    "verified": false,
-    "note": "Nominal only. Habitat step rate and arm+base step splitting have not been measured; StepResult.sim_steps reports the actual simulator cost per policy action."
+    "measured_hz": 120.0,
+    "verified": true,
+    "verified_on": "A800 aibox-r8966c444da7-676d647d8b-dpddc, 2026-09-20, episode 743",
+    "method": "one env.step advances exactly 1/120 s: yaw 0.5/120 rad/step and forward 0.25/120 m/step, measured independently",
+    "ctrl_freq_attr": 120.0,
+    "ac_freq_ratio": 4,
+    "note": "The previous nominal 50 Hz was wrong. Any dataset fps must be derived from 120 Hz, not assumed."
+  },
+  "physics": {
+    "allow_dyn_slide": true,
+    "canonical": true,
+    "reason": "allow_dyn_slide=False raises AttributeError: 'OVMMSim' object has no attribute 'get_collisions' on this Habitat revision. True is the only runnable setting, not a preference. The overlay yaml still declares false and is unrunnable as written.",
+    "allow_sliding": false,
+    "physics_config_file": "./data/default.physics_config.json"
+  },
+  "gripper": {
+    "actuation": "kinematic joint-position write",
+    "carriage_jp_indices": {
+      "left": [
+        15,
+        14
+      ],
+      "right": [
+        23,
+        22
+      ]
+    },
+    "open_m": 0.044,
+    "continuous_verified": true,
+    "note": "_set_motor_pos updates the motor target correctly (0.044 -> 0.0) but the articulation is driven kinematically (ArmAbsPosKinematicAction), so physics never integrates it and the carriages never move. Writing joint_positions directly actuates them and survives env.step."
   }
 }

@@ -18,6 +18,9 @@ from typing import Any, Sequence
 import numpy as np
 
 from .wxai_habitat_bridge import (
+    CARRIAGE_JP_INDICES,
+    CONTROL_HZ,
+    GRIPPER_OPEN_M,
     BaseLimits,
     WXAICommand,
     decode_policy_action,
@@ -48,6 +51,7 @@ class StepResult:
     observation: dict[str, Any]
     sim_steps: int
     base_normalized: tuple[float, float] | None = None
+    control_period_s: float | None = None
 
 
 class TrossenHabitatBackend:
@@ -67,9 +71,11 @@ class TrossenHabitatBackend:
         overrides = [
             f"habitat.simulator.habitat_sim_v0.gpu_device_id={config.gpu_device_id}",
             f"habitat.environment.max_episode_steps={config.max_episode_steps}",
-            # OVMMSim in this restored Habitat revision has no get_collisions(),
-            # which BaseVelAction calls only when dynamic sliding is disabled.
-            # The navmesh step_filter remains active in either mode.
+            # CANONICAL, not a preference: allow_dyn_slide=False raises
+            # AttributeError: 'OVMMSim' object has no attribute 'get_collisions'
+            # on this Habitat revision, because BaseVelAction calls it only when
+            # dynamic sliding is disabled. Verified 2026-09-20. The navmesh
+            # step_filter remains active either way.
             "habitat.task.actions.base_velocity.allow_dyn_slide=True",
         ]
         habitat_config = get_config(config.habitat_config, overrides=overrides)
@@ -143,44 +149,73 @@ class TrossenHabitatBackend:
         self.sim_step_count += 1
         return dict(raw)
 
-    def step_policy_action(
-        self, action: Sequence[float], *, allow_split_base_step: bool = False
-    ) -> StepResult:
-        """Execute one physical 16-D policy action.
+    def set_gripper_kinematic(self, ee_index: int, closed_fraction: float) -> None:
+        """Actuate one gripper by writing carriage joint positions.
 
-        Arms and base are separate Habitat task actions in the installed
-        revision, so a command that moves both cannot be applied atomically.
-        Rather than silently spending two simulator steps on one policy step,
-        this refuses unless the caller opts in, and then reports ``sim_steps``
-        so the rate discrepancy stays in the record.
+        The overlay's ``set_gripper_target_state_for_ee`` sets a joint *motor*
+        target. Measured on the live runtime (2026-09-20): the target updates
+        correctly (0.044 -> 0.0) but the carriages never move, because the
+        articulation is driven kinematically by ``ArmAbsPosKinematicAction``
+        and physics never integrates the motor. Two seconds of
+        ``step_physics`` left the carriages at 0.044 m.
+
+        Writing ``joint_positions`` directly actuates them, reproduces the
+        requested fraction exactly, keeps the two hands independent, and
+        survives ``env.step``.
         """
-        command = decode_policy_action(action)
-        if command.base_is_stationary:
-            obs = self.step_arm_grippers(
-                command.arm_joint_targets_rad,
-                command.left_gripper_closed_fraction,
-                command.right_gripper_closed_fraction,
-            )
-            return StepResult(observation=obs, sim_steps=1, base_normalized=(0.0, 0.0))
+        import numpy as _np
 
+        robot = self.env.sim.get_agent_data(0).articulated_agent
+        target = GRIPPER_OPEN_M * (1.0 - float(min(max(closed_fraction, 0.0), 1.0)))
+        jp = _np.asarray(robot.sim_obj.joint_positions, dtype=_np.float64).copy()
+        for index in CARRIAGE_JP_INDICES[ee_index]:
+            jp[index] = target
+        robot.sim_obj.joint_positions = jp
+
+    def step_policy_action(self, action: Sequence[float]) -> StepResult:
+        """Execute one physical 16-D policy action as ONE simulator transition.
+
+        Habitat's ``embodied_task`` accepts a tuple of action names, so arms and
+        base are applied within a single ``env.step``. Verified on the live
+        runtime: all 12 arm joints and both grippers round-trip exactly, and the
+        base advances by exactly one control period (``ang_speed/120`` rad,
+        ``lin_speed/120`` m) for one call.
+
+        This replaces the earlier split path, which spent two simulator steps on
+        one policy action.
+        """
+        import numpy as _np
+
+        command = decode_policy_action(action)
         normalized = to_habitat_base(command, self.config.base_limits)
-        if not allow_split_base_step:
-            raise RuntimeError(
-                "arm+base execution is not atomic in the installed Habitat action "
-                "space: applying this command would consume two simulator steps "
-                "for one policy step. Pass allow_split_base_step=True to accept "
-                "that explicitly; the cost is reported in StepResult.sim_steps."
-            )
-        self.step_arm_grippers(
-            command.arm_joint_targets_rad,
-            command.left_gripper_closed_fraction,
-            command.right_gripper_closed_fraction,
-        )
-        obs = self.step_base_normalized(float(normalized[0]), float(normalized[1]))
+
+        # Grippers are written before and after the step: the magic-grasp
+        # helpers inside BimanualArmAction call whole-robot open/close, which
+        # would otherwise clobber the per-hand targets.
+        self.set_gripper_kinematic(0, command.left_gripper_closed_fraction)
+        self.set_gripper_kinematic(1, command.right_gripper_closed_fraction)
+
+        raw = self.env.step({
+            "action": ("arm_action", "base_velocity"),
+            "action_args": {
+                "arm_action": command.arm_joint_targets_rad.astype(_np.float32),
+                "left_grip_action": _np.asarray(
+                    [2.0 * command.left_gripper_closed_fraction - 1.0], dtype=_np.float32),
+                "right_grip_action": _np.asarray(
+                    [2.0 * command.right_gripper_closed_fraction - 1.0], dtype=_np.float32),
+                "base_vel": normalized.astype(_np.float32),
+            },
+        })
+        self.set_gripper_kinematic(0, command.left_gripper_closed_fraction)
+        self.set_gripper_kinematic(1, command.right_gripper_closed_fraction)
+
+        self.last_raw_observation = dict(raw)
+        self.sim_step_count += 1
         return StepResult(
-            observation=obs,
-            sim_steps=2,
+            observation=dict(raw),
+            sim_steps=1,
             base_normalized=(float(normalized[0]), float(normalized[1])),
+            control_period_s=1.0 / CONTROL_HZ,
         )
 
     def close(self) -> None:
