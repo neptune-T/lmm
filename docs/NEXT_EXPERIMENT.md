@@ -70,9 +70,10 @@ Report each **from the observed trajectories**, not from assumption:
   valuable information available, and it determines whether the end-to-end
   setup is viable at all.
 
-## Blocking prerequisite: hardware
+## Execution host status
 
-**This cannot run on the current machine.**
+The workstation still cannot run this experiment, but the restored A800 host
+can supply the simulator and GPU resources. See [`A800_SERVER.md`](A800_SERVER.md).
 
 | Requirement | This machine |
 |---|---|
@@ -80,11 +81,16 @@ Report each **from the observed trajectories**, not from assumption:
 | JAX + OpenPI | not installed |
 | GPU for pi0.5 BF16 | RTX 3070 Laptop, 8 GB |
 | Free disk | **4.9 GB of 916 GB** |
-| A800 cluster | **lost 2026-09-14** |
+| A800 cluster | **restored: 4× A800 80GB; GPU1-3 idle at 2026-09-20 check** |
 
-Needed: a GPU host (>= 40 GB VRAM for comfortable BF16 serving), the Habitat
-OVMM environment plus BEHAVIOR/home-robot assets, the JAX/OpenPI environment,
-and a restored BF16 checkpoint.
+Available on the restored host: Habitat OVMM, HomeRobot/HSSD assets, OpenPI,
+the Python 3.9/3.11 environments and three currently idle A800s. The dual-arm
+simulator contract has passed `reset -> render -> step`.
+
+Still blocking the experiment: `BehaviorEnv.make()` has not yet been bound to
+the real Trossen Habitat backend, and there is no validated dual-arm OVMM
+pi0.5 checkpoint. Recovered q20 is a Stretch 10D-state/10D-action checkpoint
+and cannot be used as a 14D-state/16D-action Trossen policy.
 
 The q20 BF16 model is recoverable from Hugging Face. Exact q0/q5/q10 are not —
 see `LEGACY_EXPERIMENTS.md` §J.

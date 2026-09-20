@@ -14,7 +14,10 @@ from lmm.env.simulator_adapter import (  # noqa: E402
 )
 from lmm.env.snapshot import SnapshotStore, root_id_for, state_digest  # noqa: E402
 from lmm.policy.base import ActionSpec  # noqa: E402
-from lmm.policy.pi05_policy import OVMM_ACTION_SPEC  # noqa: E402
+from lmm.policy.pi05_policy import (  # noqa: E402
+    BIMANUAL_OVMM_ACTION_SPEC,
+    OVMM_ACTION_SPEC,
+)
 
 
 class TestActionContract(unittest.TestCase):
@@ -23,6 +26,12 @@ class TestActionContract(unittest.TestCase):
         self.assertEqual(OVMM_ACTION_SPEC.base_dim, 3)
         self.assertEqual(OVMM_ACTION_SPEC.arm_dim, 7)
         self.assertEqual(OVMM_ACTION_SPEC.gripper_dim, 1)
+
+    def test_bimanual_ovmm_action_dimensionality(self):
+        self.assertEqual(BIMANUAL_OVMM_ACTION_SPEC.total_dim, 16)
+        self.assertEqual(BIMANUAL_OVMM_ACTION_SPEC.base_dim, 2)
+        self.assertEqual(BIMANUAL_OVMM_ACTION_SPEC.arm_dim, 12)
+        self.assertEqual(BIMANUAL_OVMM_ACTION_SPEC.gripper_dim, 2)
 
     def test_base_arm_gripper_mapping_is_positional(self):
         spec = ActionSpec(base_dim=3, arm_dim=7, gripper_dim=1)
@@ -36,6 +45,11 @@ class TestActionContract(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             OVMM_ACTION_SPEC.split([0.0] * 10)
         self.assertIn("expected 11", str(ctx.exception))
+
+    def test_generic_adapter_fails_closed_for_two_grippers(self):
+        adapter = SimulatorAdapter(action_spec=BIMANUAL_OVMM_ACTION_SPEC)
+        with self.assertRaisesRegex(NotImplementedError, "dual-gripper Habitat backend"):
+            adapter.to_command([0.0] * 16)
 
 
 class TestSnapDesnapSemantics(unittest.TestCase):

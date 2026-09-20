@@ -26,10 +26,10 @@ Five findings explain why the folder structure stopped reflecting the method:
    `online_driver_v4.py` / `online_driver_v5.py` — the drivers behind the 20-round
    online update — exist only inside `paper_data/server_pull_20260913/`, an
    un-versioned pull from a server that has since been lost.
-4. **The A800 server is gone.** Recovery on 2026-09-14 restored only the final
-   q20 model, q20 optimizer state, q4 model and a 40 MB audit archive from
-   Hugging Face. Exact q0 / q5 / q10 weights and all intermediate checkpoints
-   are unrecoverable.
+4. **The A800 server was restored on 2026-09-20.** The recovered q20 model,
+   optimizer state and q4 model remain available, and the host now has a
+   working HomeRobot/HSSD/OpenPI stack. Exact q0 / q5 / q10 weights remain
+   unrecoverable; q20 is Stretch-only and is not a dual-arm checkpoint.
 5. **`Planning/` is an unimplemented scaffold.** It already contains the
    conceptual package layout now being requested (`src/longhorizon/{envs,
    policies,rollout,scoring,selection,optimization,evaluation,quantization}`)
@@ -42,7 +42,7 @@ Five findings explain why the folder structure stopped reflecting the method:
 | GPU | 1× RTX 3070 Laptop, 8 GB | Cannot serve pi0.5 BF16; cannot run Habitat/BEHAVIOR |
 | Disk | 916 G, **4.9 G free (100 % used)** | No large copies; moves must stay on-filesystem |
 | Interpreter | Python 3.13.9 | `torch`, `jax`, `habitat`, `openpi` all absent |
-| A800 cluster | **lost** (2026-09-14) | Every historical repro command points at dead paths |
+| A800 cluster | **restored** (verified 2026-09-20) | 4×A800 80GB; canonical paths are documented in `A800_SERVER.md` |
 
 The end-to-end BF16 sanity check (milestone §21) **cannot be executed on this
 machine**. It is specified in [`NEXT_EXPERIMENT.md`](NEXT_EXPERIMENT.md) for a

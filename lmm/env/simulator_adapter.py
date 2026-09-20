@@ -119,6 +119,12 @@ class SimulatorAdapter:
         if self.config.clip_actions:
             a = np.clip(a, self.config.action_low, self.config.action_high)
         parts = self.action_spec.split(a)
+        if parts["gripper"].size != 1:
+            raise NotImplementedError(
+                "the generic SimulatorAdapter only implements one gripper; "
+                "bind the Trossen dual-gripper Habitat backend before running "
+                f"a {parts['gripper'].size}-gripper action contract"
+            )
         return {
             "base": parts["base"] * self.config.base_scale,
             "arm": parts["arm"] * self.config.arm_scale,

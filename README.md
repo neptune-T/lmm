@@ -21,6 +21,7 @@ convention used in these docs.
 3. [`docs/NEXT_EXPERIMENT.md`](docs/NEXT_EXPERIMENT.md) — the one experiment to run next
 4. [`docs/CODEBASE_INVENTORY_20260919.md`](docs/CODEBASE_INVENTORY_20260919.md) — what exists and in what state
 5. [`docs/LEGACY_EXPERIMENTS.md`](docs/LEGACY_EXPERIMENTS.md) — historical results, including the negative ones that drove this redesign
+6. [`docs/A800_SERVER.md`](docs/A800_SERVER.md) — restored execution host, paths, access route and verified dual-arm OVMM state
 
 Also: [`docs/DATA_FORMATS.md`](docs/DATA_FORMATS.md),
 [`docs/QUANTIZATION_BACKENDS.md`](docs/QUANTIZATION_BACKENDS.md),
@@ -95,5 +96,8 @@ The end-to-end policy path is **not yet validated** — see
 stop with an explicit message naming the simulator or policy backend still to
 be bound, rather than silently doing nothing.
 
-The A800 cluster was lost on 2026-09-14; the q20 checkpoint was recovered from
-Hugging Face, exact q0/q5/q10 were not.
+The 4×A800 execution host was restored and verified on 2026-09-20. Habitat
+OVMM now completes a dual-arm Trossen Mobile AI `reset -> render -> step`
+smoke test. The canonical real-simulator binding and an embodiment-compatible
+pi0.5 checkpoint remain open; recovered q20 is Stretch-only (10D/10D norm
+statistics). See [`docs/A800_SERVER.md`](docs/A800_SERVER.md).

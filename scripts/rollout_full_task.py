@@ -21,6 +21,7 @@ from _common import add_common_args, load_config, require_simulator, resolve_man
 from lmm.env.behavior_env import BehaviorEnv, BehaviorEnvConfig
 from lmm.env.simulator_adapter import AdapterConfig
 from lmm.instrumentation.event_detector import EventDetector, EventDetectorConfig
+from lmm.policy.base import ActionSpec
 from lmm.policy.pi05_policy import OVMM_ACTION_SPEC, Pi05Policy, Pi05PolicyConfig
 from lmm.rollout.client import PolicyClient, PolicyClientConfig
 from lmm.rollout.runner import RolloutConfig, RolloutRunner
@@ -37,6 +38,11 @@ def main() -> None:
 
     env_cfg = load_config(args.env_config)
     roll_cfg = load_config(args.rollout_config)
+    action_spec = ActionSpec(**env_cfg.get("action_spec", {
+        "base_dim": OVMM_ACTION_SPEC.base_dim,
+        "arm_dim": OVMM_ACTION_SPEC.arm_dim,
+        "gripper_dim": OVMM_ACTION_SPEC.gripper_dim,
+    }))
 
     manifest = resolve_manifest(
         args,
@@ -60,6 +66,7 @@ def main() -> None:
             server_url=args.server_url,
             policy_version=args.policy_version,
             precision_backend=manifest.precision_backend,
+            action_spec=action_spec,
         ),
         client,
     )
@@ -70,7 +77,7 @@ def main() -> None:
             max_steps=env_cfg.get("max_steps", 1500),
             adapter=AdapterConfig(**env_cfg.get("adapter", {})),
         ),
-        OVMM_ACTION_SPEC,
+        action_spec,
         detector=EventDetector(EventDetectorConfig(**env_cfg.get("event_detector", {}))),
     )
     runner = RolloutRunner(

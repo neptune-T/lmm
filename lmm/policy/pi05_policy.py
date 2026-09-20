@@ -26,6 +26,10 @@ from .base import ActionSpec, Policy
 #: 3 base (x, y, yaw) + 7 arm joints + 1 continuous gripper.
 OVMM_ACTION_SPEC = ActionSpec(base_dim=3, arm_dim=7, gripper_dim=1)
 
+#: Trossen Mobile AI action layout validated in Habitat OVMM on the A800 host:
+#: planar base (forward, yaw) + two 6-DoF arms + two independent grippers.
+BIMANUAL_OVMM_ACTION_SPEC = ActionSpec(base_dim=2, arm_dim=12, gripper_dim=2)
+
 
 @dataclass
 class Pi05PolicyConfig:

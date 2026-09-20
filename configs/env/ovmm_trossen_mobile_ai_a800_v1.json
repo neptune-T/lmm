@@ -1,0 +1,33 @@
+{
+  "_comment": "A800 deployment of Habitat OVMM with the Trossen Mobile AI dual-arm overlay. Simulator plumbing only; no semantic skill sequencer.",
+  "schema": "lmm_env_config_v1",
+  "benchmark_root": "/nix/yanjun/zts/lmm/home-robot",
+  "task": "pick_and_place",
+  "max_steps": 1500,
+  "habitat_config": "/nix/yanjun/zts/lmm/home-robot/src/third_party/habitat-lab/habitat-lab/habitat/config/benchmark/ovmm/ovmm_trossen_mobile_ai.yaml",
+  "python": "/nix/yanjun/zts/lmm/envs/home_robot39/bin/python",
+  "action_spec": { "base_dim": 2, "arm_dim": 12, "gripper_dim": 2 },
+  "observation_contract": {
+    "head_rgb": [480, 640, 3],
+    "head_depth": [480, 640, 1],
+    "left_wrist_rgb": [224, 224, 3],
+    "right_wrist_rgb": [224, 224, 3],
+    "trossen_bimanual_joint": [14]
+  },
+  "adapter": {
+    "base_scale": 1.0,
+    "arm_scale": 1.0,
+    "snap_threshold": 0.5,
+    "desnap_threshold": 0.3,
+    "clip_actions": true,
+    "action_low": -1.0,
+    "action_high": 1.0
+  },
+  "event_detector": {
+    "_comment": "Observation only; it must not select modes or skills.",
+    "approach_distance": 1.0,
+    "receptacle_distance": 1.0,
+    "rest_speed": 0.01,
+    "gripper_close_threshold": 0.5
+  }
+}

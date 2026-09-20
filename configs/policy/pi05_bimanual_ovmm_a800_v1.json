@@ -1,0 +1,13 @@
+{
+  "_comment": "High-fidelity pi0.5 contract for Trossen Mobile AI in Habitat OVMM. Restored q20 has 10D Stretch norm stats and is not valid for this 14D/16D embodiment.",
+  "schema": "lmm_policy_config_v1",
+  "policy_version": "REPLACE_WITH_BIMANUAL_OVMM_CHECKPOINT",
+  "checkpoint_path": "REPLACE_WITH_BIMANUAL_OVMM_CHECKPOINT",
+  "server_url": "http://127.0.0.1:8080",
+  "precision_backend": "bf16",
+  "action_horizon": 1,
+  "num_steps": 10,
+  "action_spec": { "base_dim": 2, "arm_dim": 12, "gripper_dim": 2 },
+  "state_dim": 14,
+  "embodiment": "trossen_mobile_ai"
+}
