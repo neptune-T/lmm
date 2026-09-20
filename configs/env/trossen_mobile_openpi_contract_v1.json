@@ -1,0 +1,38 @@
+{
+  "schema": "trossen_mobile_openpi_contract_v1",
+  "openpi_commit": "15a9616a00943ada6c20a0f158e3adb39df2ccac",
+  "asset_id": "trossen_mobile",
+  "control_hz": 50,
+  "state": {
+    "dimension": 14,
+    "order": [
+      "left_joint_0_rad", "left_joint_1_rad", "left_joint_2_rad",
+      "left_joint_3_rad", "left_joint_4_rad", "left_joint_5_rad",
+      "left_gripper_closed_fraction",
+      "right_joint_0_rad", "right_joint_1_rad", "right_joint_2_rad",
+      "right_joint_3_rad", "right_joint_4_rad", "right_joint_5_rad",
+      "right_gripper_closed_fraction"
+    ]
+  },
+  "action": {
+    "dimension": 16,
+    "order": [
+      "left_joint_0_absolute_rad", "left_joint_1_absolute_rad", "left_joint_2_absolute_rad",
+      "left_joint_3_absolute_rad", "left_joint_4_absolute_rad", "left_joint_5_absolute_rad",
+      "left_gripper_closed_fraction",
+      "right_joint_0_absolute_rad", "right_joint_1_absolute_rad", "right_joint_2_absolute_rad",
+      "right_joint_3_absolute_rad", "right_joint_4_absolute_rad", "right_joint_5_absolute_rad",
+      "right_gripper_closed_fraction", "base_velocity_x", "base_velocity_y"
+    ],
+    "gripper_range": [0.0, 1.0],
+    "gripper_zero": "fully_open",
+    "gripper_one": "fully_closed"
+  },
+  "habitat_backend": {
+    "robot": "TrossenMobileAIRobot",
+    "arm_control": "absolute_joint_position_rad",
+    "base_type": "differential_drive",
+    "base_native_action": ["forward_velocity", "yaw_velocity"],
+    "mobile_aloha_compatibility": "arms/grippers mapped; lateral base velocity is not executable and must fail closed"
+  }
+}
