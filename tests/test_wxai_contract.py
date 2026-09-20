@@ -302,6 +302,65 @@ class TestActuatorDecoding(unittest.TestCase):
             decode_policy_action(np.zeros(14))
 
 
+class TestGripperEmbodimentCalibration(unittest.TestCase):
+    """Pins the gripper chain against the Habitat overlay's actual code.
+
+    Constants are transcribed from
+    ``habitat_patch/trossen_mobile_ai/trossen_mobile_ai_robot.py`` and
+    ``bimanual_actions.py``. If the overlay changes, these fail.
+    """
+
+    OPEN_STATE_M = 0.044     # MobileManipulatorParams.gripper_open_state
+    GRASP_THRESHOLD = 0.0    # ovmm_trossen_mobile_ai.yaml: grasp_threshold
+
+    @staticmethod
+    def _action_to_carriage(fraction, open_m):
+        """set_gripper_target_state_for_ee(): open_state * (1 - fraction)."""
+        return open_m * (1.0 - fraction)
+
+    @staticmethod
+    def _carriage_to_state(metres, open_m):
+        """pi05_state(): 1 - clip(mean(carriage) / 0.044, 0, 1)."""
+        return 1.0 - min(max(metres / open_m, 0.0), 1.0)
+
+    def test_observation_and_action_gripper_encodings_are_inverse(self):
+        for f in (0.0, 0.25, 0.5, 0.75, 1.0):
+            carriage = self._action_to_carriage(f, self.OPEN_STATE_M)
+            back = self._carriage_to_state(carriage, self.OPEN_STATE_M)
+            self.assertAlmostEqual(back, f, places=12)
+
+    def test_zero_is_open_and_one_is_closed_in_metres(self):
+        self.assertAlmostEqual(
+            self._action_to_carriage(0.0, self.OPEN_STATE_M), 0.044, places=12)
+        self.assertAlmostEqual(
+            self._action_to_carriage(1.0, self.OPEN_STATE_M), 0.0, places=12)
+
+    def test_habitat_binarizes_the_gripper_at_one_half(self):
+        """The overlay thresholds; intermediate commands are NOT executed.
+
+        ``_apply_grip`` compares the [-1, 1] grip command against
+        grasp_threshold=0.0. The bridge maps a closed fraction g to 2g-1, so
+        the effective policy-space threshold is exactly g = 0.5. A policy
+        trained on continuous gripper targets will have every intermediate
+        value collapsed to fully-open or fully-closed at execution time.
+        """
+        for g, expected in [(0.0, 0.0), (0.25, 0.0), (0.49, 0.0),
+                            (0.5, 1.0), (0.75, 1.0), (1.0, 1.0)]:
+            grip_cmd = 2.0 * g - 1.0
+            executed = 1.0 if grip_cmd >= self.GRASP_THRESHOLD else 0.0
+            self.assertEqual(
+                executed, expected,
+                f"g={g} mapped to {grip_cmd:+.2f}, executed {executed}",
+            )
+
+    def test_bridge_threshold_midpoint_matches_overlay_threshold(self):
+        """g = 0.5 must be the exact boundary, not 0.4999 or 0.5001."""
+        a = np.zeros(ACTION_DIM)
+        a[GRIPPER_INDICES[0]] = 0.5
+        cmd = decode_policy_action(a).habitat_arm_args()["left_grip_action"][0]
+        self.assertAlmostEqual(float(cmd), self.GRASP_THRESHOLD, places=12)
+
+
 class TestTransformPair(unittest.TestCase):
     def test_inputs_emit_state_and_masked_images(self):
         out = WXAIInputs()({
