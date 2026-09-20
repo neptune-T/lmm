@@ -10,10 +10,14 @@ import pickle
 import time
 import urllib.request
 
+import sys
+
 import numpy as np
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
 from lmm.env.trossen_habitat_backend import TrossenHabitatBackend, TrossenHabitatConfig
-from lmm.env.trossen_mobile_contract import decode_openpi_action
+from lmm.env.wxai_habitat_bridge import BaseLimits, decode_policy_action, to_habitat_base
 
 
 def post(url: str, payload: dict):
@@ -80,7 +84,7 @@ def main() -> None:
                 ),
                 dtype=np.float32,
             )
-            decoded = decode_openpi_action(policy_action)
+            decoded = decode_policy_action(policy_action)
 
             # Bounded actuator-only motion. Policy output is audited but is not
             # applied because Mobile ALOHA vx/vy is not the differential base's
@@ -108,7 +112,11 @@ def main() -> None:
                     "habitat_episode_id": backend.episode_id,
                     "initial_state": initial_state.tolist(),
                     "policy_action": policy_action.tolist(),
-                    "policy_base_velocity_xy": decoded.base_velocity_xy.tolist(),
+                    "policy_base_forward_mps": decoded.base_forward_mps,
+                    "policy_base_yaw_radps": decoded.base_yaw_radps,
+                    "habitat_base_normalized": to_habitat_base(
+                        decoded, BaseLimits(), strict=False
+                    ).tolist(),
                     "policy_action_actuated": False,
                     "policy_block_reason": "Mobile ALOHA vx/vy and ViperX embodiment do not exactly match differential-drive WXAI backend",
                     "actuator_steps": 22,

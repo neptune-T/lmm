@@ -1,0 +1,52 @@
+{
+  "_comment": "WXAI dual-arm differential-drive contract. Dimension meanings are mirrored in lmm/policy/wxai_transforms.py, which is the executable source of truth; this file exists so the contract is reviewable without reading code.",
+  "schema": "lmm_wxai_contract_v1",
+  "embodiment": {
+    "arms": "2x WXAI 6-DoF",
+    "grippers": "2x parallel, 0=open 1=closed",
+    "base": "differential drive (forward + yaw)",
+    "note": "NOT Mobile ALOHA. Not dual ViperX, not a Slate omnidirectional base."
+  },
+  "state_dim": 14,
+  "state_labels": [
+    "left_joint_0_rad", "left_joint_1_rad", "left_joint_2_rad",
+    "left_joint_3_rad", "left_joint_4_rad", "left_joint_5_rad",
+    "left_gripper_closed_fraction",
+    "right_joint_0_rad", "right_joint_1_rad", "right_joint_2_rad",
+    "right_joint_3_rad", "right_joint_4_rad", "right_joint_5_rad",
+    "right_gripper_closed_fraction"
+  ],
+  "action_dim": 16,
+  "action_labels": [
+    "left_joint_0_absolute_rad", "left_joint_1_absolute_rad",
+    "left_joint_2_absolute_rad", "left_joint_3_absolute_rad",
+    "left_joint_4_absolute_rad", "left_joint_5_absolute_rad",
+    "left_gripper_closed_fraction",
+    "right_joint_0_absolute_rad", "right_joint_1_absolute_rad",
+    "right_joint_2_absolute_rad", "right_joint_3_absolute_rad",
+    "right_joint_4_absolute_rad", "right_joint_5_absolute_rad",
+    "right_gripper_closed_fraction",
+    "base_forward_velocity_mps", "base_yaw_velocity_radps"
+  ],
+  "delta_action_mask_length": 14,
+  "delta_action_mask_note": "14 elements, not 16. DeltaActions computes dims=len(mask) and indexes state[..., :dims]; state is 14-D, so a 16-element mask raises. The prefix stopping at 14 is what keeps base dims absolute.",
+  "base": {
+    "semantics": "forward/yaw differential drive",
+    "policy_units": ["m/s", "rad/s"],
+    "habitat_units": "normalized [-1, 1] scaled by lin_speed / ang_speed",
+    "lin_speed_mps": 0.25,
+    "ang_speed_radps": 0.5,
+    "conversion_site": "lmm.env.wxai_habitat_bridge.to_habitat_base",
+    "over_limit_policy": "refuse, do not saturate"
+  },
+  "normalization": {
+    "asset_id": null,
+    "status": "NOT_CALIBRATED",
+    "note": "trossen / trossen_mobile statistics describe dual ViperX arms and a Slate omnidirectional base. They are dimensionally compatible (14-D state, 16-D action) but semantically wrong for WXAI, and dims 14-15 have been redefined from vx/vy to forward/yaw. New statistics MUST be computed from WXAI data before fine-tuning."
+  },
+  "control": {
+    "nominal_hz": 50,
+    "verified": false,
+    "note": "Nominal only. Habitat step rate and arm+base step splitting have not been measured; StepResult.sim_steps reports the actual simulator cost per policy action."
+  }
+}

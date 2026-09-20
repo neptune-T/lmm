@@ -28,7 +28,7 @@ OVMM_ACTION_SPEC = ActionSpec(base_dim=3, arm_dim=7, gripper_dim=1)
 
 #: Dimension counts for Mobile ALOHA. The native OpenPI order is interleaved,
 #: not base-first: left6, left-grip, right6, right-grip, base-vx, base-vy.
-#: Use :mod:`lmm.env.trossen_mobile_contract` to decode it; ActionSpec records
+#: Use :mod:`lmm.env.wxai_habitat_bridge` to decode it; ActionSpec records
 #: counts only and its ``split`` method must not be used for this embodiment.
 BIMANUAL_OVMM_ACTION_SPEC = ActionSpec(base_dim=2, arm_dim=12, gripper_dim=2)
 

@@ -1,8 +1,13 @@
 """Concrete Habitat backend for the installed Trossen Mobile AI overlay.
 
-No planner, skill sequencer, frontier logic, or RL lives here.  The class
-only constructs Habitat, converts observations, and transmits audited
-actuator commands.
+No planner, skill sequencer, frontier logic, or RL lives here. The class only
+constructs Habitat, converts observations, and transmits audited actuator
+commands.
+
+Action semantics come from :mod:`lmm.policy.wxai_transforms` (16-D, with
+dimensions 14-15 as forward/yaw velocity) and reach Habitat through
+:mod:`lmm.env.wxai_habitat_bridge`, which owns the single physical-to-
+normalized unit conversion.
 """
 
 from __future__ import annotations
@@ -12,10 +17,12 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from .trossen_mobile_contract import (
-    assert_differential_base_executable,
-    decode_openpi_action,
-    encode_openpi_observation,
+from .wxai_habitat_bridge import (
+    BaseLimits,
+    WXAICommand,
+    decode_policy_action,
+    encode_habitat_observation,
+    to_habitat_base,
 )
 
 
@@ -25,6 +32,22 @@ class TrossenHabitatConfig:
     prompt: str
     gpu_device_id: int = 0
     max_episode_steps: int = 1500
+    base_limits: BaseLimits = BaseLimits()
+
+
+@dataclass
+class StepResult:
+    """One actuator transmission and what it actually cost.
+
+    ``sim_steps`` is recorded because arms and base are separate Habitat task
+    actions: a policy command that moves both consumes two simulator steps.
+    Callers that reason about control rate must read this rather than assume
+    one policy step equals one simulator step.
+    """
+
+    observation: dict[str, Any]
+    sim_steps: int
+    base_normalized: tuple[float, float] | None = None
 
 
 class TrossenHabitatBackend:
@@ -34,6 +57,7 @@ class TrossenHabitatBackend:
         self.config = config
         self.env = env
         self.last_raw_observation: dict[str, Any] | None = None
+        self.sim_step_count = 0
 
     @classmethod
     def make(cls, config: TrossenHabitatConfig) -> "TrossenHabitatBackend":
@@ -54,7 +78,8 @@ class TrossenHabitatBackend:
     def reset(self) -> dict[str, Any]:
         raw = self.env.reset()
         self.last_raw_observation = dict(raw)
-        return encode_openpi_observation(raw, prompt=self.config.prompt)
+        self.sim_step_count = 0
+        return encode_habitat_observation(raw, prompt=self.config.prompt)
 
     @property
     def episode_over(self) -> bool:
@@ -63,6 +88,14 @@ class TrossenHabitatBackend:
     @property
     def episode_id(self) -> str:
         return str(self.env.current_episode.episode_id)
+
+    def observe(self) -> dict[str, Any]:
+        """Re-encode the most recent raw observation for the policy."""
+        if self.last_raw_observation is None:
+            raise RuntimeError("no observation yet; call reset() first")
+        return encode_habitat_observation(
+            self.last_raw_observation, prompt=self.config.prompt
+        )
 
     def step_arm_grippers(
         self,
@@ -90,41 +123,64 @@ class TrossenHabitatBackend:
             }
         )
         self.last_raw_observation = dict(raw)
+        self.sim_step_count += 1
         return dict(raw)
 
-    def step_base_forward_yaw(self, forward: float, yaw: float) -> dict[str, Any]:
-        """Exercise Habitat's native differential-drive actuator directly.
+    def step_base_normalized(self, forward: float, yaw: float) -> dict[str, Any]:
+        """Drive Habitat's differential base with **normalized** controls.
 
-        Inputs are normalized controls consumed by ``BaseVelAction``.  This is
-        deliberately not called x/y, and is not used for OpenPI policy output.
+        Inputs are the ``[-1, 1]`` values ``BaseVelAction`` consumes directly.
+        Use :func:`lmm.env.wxai_habitat_bridge.to_habitat_base` to obtain them
+        from physical m/s and rad/s; do not scale by hand at the call site.
         """
         value = np.asarray([forward, yaw], dtype=np.float32)
         if not np.isfinite(value).all() or np.max(np.abs(value)) > 1:
-            raise ValueError("native base controls must be finite and in [-1, 1]")
+            raise ValueError("normalized base controls must be finite and in [-1, 1]")
         raw = self.env.step(
             {"action": "base_velocity", "action_args": {"base_vel": value}}
         )
         self.last_raw_observation = dict(raw)
+        self.sim_step_count += 1
         return dict(raw)
 
-    def step_openpi_action(self, action: Sequence[float]) -> dict[str, Any]:
-        """Execute only the proven differential-drive-compatible subset.
+    def step_policy_action(
+        self, action: Sequence[float], *, allow_split_base_step: bool = False
+    ) -> StepResult:
+        """Execute one physical 16-D policy action.
 
-        Even when ``vy`` is zero, arms and base are separate Habitat actions,
-        so this method rejects nonzero base commands instead of silently using
-        two simulator timesteps for one 50 Hz policy command.
+        Arms and base are separate Habitat task actions in the installed
+        revision, so a command that moves both cannot be applied atomically.
+        Rather than silently spending two simulator steps on one policy step,
+        this refuses unless the caller opts in, and then reports ``sim_steps``
+        so the rate discrepancy stays in the record.
         """
-        command = decode_openpi_action(action)
-        native_base = assert_differential_base_executable(command)
-        if np.max(np.abs(native_base)) > 1e-6:
-            raise RuntimeError(
-                "simultaneous arm+base execution is not yet atomic in the installed "
-                "Habitat action space; refusing a two-timestep reinterpretation"
+        command = decode_policy_action(action)
+        if command.base_is_stationary:
+            obs = self.step_arm_grippers(
+                command.arm_joint_targets_rad,
+                command.left_gripper_closed_fraction,
+                command.right_gripper_closed_fraction,
             )
-        return self.step_arm_grippers(
+            return StepResult(observation=obs, sim_steps=1, base_normalized=(0.0, 0.0))
+
+        normalized = to_habitat_base(command, self.config.base_limits)
+        if not allow_split_base_step:
+            raise RuntimeError(
+                "arm+base execution is not atomic in the installed Habitat action "
+                "space: applying this command would consume two simulator steps "
+                "for one policy step. Pass allow_split_base_step=True to accept "
+                "that explicitly; the cost is reported in StepResult.sim_steps."
+            )
+        self.step_arm_grippers(
             command.arm_joint_targets_rad,
             command.left_gripper_closed_fraction,
             command.right_gripper_closed_fraction,
+        )
+        obs = self.step_base_normalized(float(normalized[0]), float(normalized[1]))
+        return StepResult(
+            observation=obs,
+            sim_steps=2,
+            base_normalized=(float(normalized[0]), float(normalized[1])),
         )
 
     def close(self) -> None:
