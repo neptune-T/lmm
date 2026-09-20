@@ -1,0 +1,31 @@
+{
+  "_comment": "Frontier discovery defaults. Thresholds are CONFIGURATION, not conclusions: frontier_low/high define where useful learning signal is expected and must be revisited as evidence accumulates.",
+  "schema": "lmm_frontier_config_v1",
+  "candidate_proposer": {
+    "strategy": "fixed_interval",
+    "interval": 30,
+    "max_candidates": 16,
+    "skip_first_steps": 0,
+    "event_names": [],
+    "manual_steps": []
+  },
+  "coarse_to_fine": {
+    "enabled": true,
+    "fine_interval": 10,
+    "max_refine_candidates": 8
+  },
+  "probe": {
+    "k_probe": 4,
+    "k_cheap": 32,
+    "probe_backend": "fp8_storage_bf16_compute",
+    "base_seed": 0
+  },
+  "selector": {
+    "frontier_low": 0.2,
+    "frontier_high": 0.8,
+    "min_probes": 2,
+    "max_uncertainty": null,
+    "require_outcome_variance": true,
+    "max_selected": 8
+  }
+}

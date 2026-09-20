@@ -1,0 +1,15 @@
+{
+  "_comment": "Three separate evaluations. Frontier continuation success is NOT task success; full-task eval is mandatory for an end-to-end method.",
+  "schema": "lmm_eval_config_v1",
+  "frontier_eval": { "splits": ["train", "held_out"], "k_eval": 8, "precision_backend": "bf16" },
+  "full_task_eval": {
+    "precision_backend": "bf16",
+    "n_episodes": 16,
+    "seeds": [0, 1, 2, 3],
+    "n_bootstrap": 2000,
+    "cluster_unit": "episode_id",
+    "engineering_failures_count_as_failure": true,
+    "decision_rule": "success delta and cluster-bootstrap CI above zero; otherwise no retained improvement"
+  },
+  "fidelity_eval": { "top_k": 4, "cheap_backend": "fp8_storage_bf16_compute", "verify_backend": "bf16" }
+}

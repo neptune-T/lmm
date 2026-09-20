@@ -1,0 +1,27 @@
+{
+  "_comment": "Milestone 22 pipeline smoke test. Deliberately tiny: 4-8 candidate states, K_probe 2-4. Validates plumbing, not science.",
+  "schema": "lmm_frontier_config_v1",
+  "candidate_proposer": {
+    "strategy": "fixed_interval",
+    "interval": 30,
+    "max_candidates": 6,
+    "skip_first_steps": 0,
+    "event_names": [],
+    "manual_steps": []
+  },
+  "coarse_to_fine": { "enabled": false, "fine_interval": 10, "max_refine_candidates": 4 },
+  "probe": {
+    "k_probe": 3,
+    "k_cheap": 6,
+    "probe_backend": "bf16",
+    "base_seed": 1000
+  },
+  "selector": {
+    "frontier_low": 0.2,
+    "frontier_high": 0.8,
+    "min_probes": 2,
+    "max_uncertainty": null,
+    "require_outcome_variance": true,
+    "max_selected": 4
+  }
+}

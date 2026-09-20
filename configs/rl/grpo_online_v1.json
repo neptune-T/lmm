@@ -1,0 +1,29 @@
+{
+  "_comment": "Online GRPO over verified sibling groups. Root-level normalisation stays auditable: every sample carries root_id and group_id.",
+  "schema": "lmm_rl_config_v1",
+  "reward": {
+    "success_weight": 1.0,
+    "shaping_weights": {},
+    "clip_low": null,
+    "clip_high": null
+  },
+  "dataset": {
+    "min_group_size": 2,
+    "require_verified_backend": true,
+    "policy_version": ""
+  },
+  "advantage": {
+    "normalize_std": true,
+    "std_epsilon": 1e-06,
+    "drop_degenerate_groups": true,
+    "min_group_size": 2
+  },
+  "grpo": {
+    "clip_ratio": 0.2,
+    "kl_coefficient": 0.0,
+    "max_approx_kl": 0.05,
+    "learning_rate": 1e-05,
+    "update_epochs": 1
+  },
+  "abort_on_all_degenerate": true
+}

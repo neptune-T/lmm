@@ -1,0 +1,58 @@
+# === Large rollout observation dumps (never commit) ===
+experiments/**/observations/**/obs_data.pkl
+**/obs_data.pkl
+*.pkl
+
+# === Videos / heavy media (keep out of git; sync via results/videos or server) ===
+*.mp4
+*.avi
+*.mov
+*.webm
+
+# === Model weights / checkpoints ===
+*.pth
+*.ckpt
+*.safetensors
+*.orbax
+checkpoints/
+**/params/
+
+# === Datasets / archives ===
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# === Caches ===
+.cache/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+
+# === Experiment tracking ===
+wandb/
+**/wandb/
+
+# === Isaac / Omniverse / sim caches ===
+**/kit/cache/
+**/omni.cache/
+*.usd.cache
+
+# === Per-experiment Isaac runtime dirs (created inside OUT_DIR by launchers) ===
+experiments/**/appdata/
+experiments/**/home/
+experiments/**/cache/
+experiments/**/config/
+experiments/**/data/
+experiments/**/observations/
+experiments/**/*.log
+
+# === Local secrets / deploy env ===
+configs/deploy/lmm_deploy.env
+*.local.json
+
+# NOTE: keep small text artifacts (metadata.json, summary.json, *_metrics.json,
+# metrics.csv, skill_summary.json) tracked. Large per-step actions.jsonl and
+# frame PNGs should be reviewed before committing; prefer summaries in git and
+# full traces synced to the server / results store.

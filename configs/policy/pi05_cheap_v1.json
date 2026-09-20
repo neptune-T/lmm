@@ -1,0 +1,11 @@
+{
+  "_comment": "Cheap rollout policy for probe and explore modes. fp8_storage_bf16_compute = FP8 weights dequantised to BF16 compute. NOT native FP8. See docs/QUANTIZATION_BACKENDS.md.",
+  "schema": "lmm_policy_config_v1",
+  "policy_version": "REPLACE_ME",
+  "checkpoint_path": "REPLACE_ME",
+  "server_url": "http://127.0.0.1:8081",
+  "precision_backend": "fp8_storage_bf16_compute",
+  "action_horizon": 1,
+  "num_steps": 10,
+  "action_spec": { "base_dim": 3, "arm_dim": 7, "gripper_dim": 1 }
+}

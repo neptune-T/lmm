@@ -1,0 +1,11 @@
+{
+  "_comment": "Canonical high-fidelity end-to-end policy. Served by ONE persistent process: see docs/FRESH_POLICY_PROCESS_FIRST_DIVERGENCE_AUDIT_V1.md (MODEL_FORWARD_BACKEND_DIVERGENCE).",
+  "schema": "lmm_policy_config_v1",
+  "policy_version": "REPLACE_ME",
+  "checkpoint_path": "REPLACE_ME",
+  "server_url": "http://127.0.0.1:8080",
+  "precision_backend": "bf16",
+  "action_horizon": 1,
+  "num_steps": 10,
+  "action_spec": { "base_dim": 3, "arm_dim": 7, "gripper_dim": 1 }
+}

@@ -1,0 +1,23 @@
+{
+  "_comment": "Simulator plumbing only. Nothing here sequences the task; the end-to-end VLA decides what to do.",
+  "schema": "lmm_env_config_v1",
+  "benchmark_root": "../benchmark/home-robot",
+  "task": "pick_and_place",
+  "max_steps": 1500,
+  "adapter": {
+    "base_scale": 1.0,
+    "arm_scale": 1.0,
+    "snap_threshold": 0.5,
+    "desnap_threshold": 0.3,
+    "clip_actions": true,
+    "action_low": -1.0,
+    "action_high": 1.0
+  },
+  "event_detector": {
+    "_comment": "OBSERVATION ONLY. Changing these changes what is logged and which steps become candidates. It cannot change policy behaviour.",
+    "approach_distance": 1.0,
+    "receptacle_distance": 1.0,
+    "rest_speed": 0.01,
+    "gripper_close_threshold": 0.5
+  }
+}
