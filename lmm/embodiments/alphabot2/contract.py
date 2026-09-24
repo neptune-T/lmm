@@ -117,17 +117,21 @@ GRIPPER_SEMANTICS = {
     "open": GRIPPER_OPEN,
     "closed": GRIPPER_CLOSED,
     "controllable_dims_per_side": GRIPPER_DOF,
-    "hardware": "two-finger electric gripper (2FEG in public data)",
-    "physical_unit": "UNKNOWN — no public SDK",
-    "open_limit_physical": "UNKNOWN",
-    "closed_limit_physical": "UNKNOWN",
-    "sign_convention_physical": "UNKNOWN",
-    "continuous_or_thresholded": "UNKNOWN on hardware; public data records a "
-                                 "continuous scalar",
+    "hardware_real": "two-finger electric gripper; public data names it 2FEG",
+    "hardware_sim": "Inspire EG2-4C2 (public third-party Ai2 Bot2 asset)",
+    "real_api": "a two-finger gripper API exists on the AlphaBot 2 SDK "
+                "(operator-confirmed). Physical unit, open/closed limits and "
+                "sign are not documented publicly.",
+    "sim_actuated_joint": "{side}_gripper_joint",
+    "sim_joint_limits_rad": (0.0, 0.82),
+    "sim_mimic_joints": 5,
+    "sim_controller": "adaptive_gripper_controller/AdaptiveGripperController",
+    "aperture_direction": "UNVERIFIED — the EG2-4C2 description does not state "
+                          "whether joint=0 is open or closed. Must be measured "
+                          "in simulation before any data is recorded.",
     "grasp_events": "simulator-specific; not part of the policy contract",
-    "note": "Deliberately NOT inherited from WXAI. WXAI used a carriage "
-            "position written kinematically with a 0.5 snap threshold; none "
-            "of that is known to apply here.",
+    "note": "Deliberately NOT inherited from WXAI, which used a carriage "
+            "position written kinematically with a 0.5 snap threshold.",
 }
 
 
@@ -135,20 +139,47 @@ GRIPPER_SEMANTICS = {
 # Base semantics
 # --------------------------------------------------------------------------
 
+#: Real-robot semantics. Operator-confirmed: AlphaBot 2 has a differential-drive
+#: mobile base whose velocity API takes linear/angular commands. Kept separate
+#: from the simulator layer on purpose — the two must never be conflated.
+BASE_SEMANTICS_REAL = {
+    "kinematics": "differential drive",
+    "command_form": "(v, omega) — linear and angular velocity",
+    "policy_units": "m/s forward, rad/s yaw",
+    "source": "operator-confirmed official AlphaBot 2 SDK facts",
+    "limits": "not publicly documented; vendor publishes 6 km/h ~ 1.67 m/s max",
+    "command_rate": "not publicly documented",
+    "sign_convention": "UNVERIFIED against hardware",
+}
+
+#: Simulator semantics for the public third-party Ai2 Bot2 asset. Independently
+#: derived from the description files, NOT copied from the real-robot layer.
+BASE_SEMANTICS_SIM = {
+    "kinematics": "differential drive",
+    "evidence": (
+        "2 driving wheels at y=+-0.208 (track 0.416 m, radius 0.085 m) plus 4 "
+        "passive casters; nav2 velocity bounds pin vy to 0.0 in both max and "
+        "min, which forbids lateral motion"
+    ),
+    "command_topic": "/cmd_vel (geometry_msgs/Twist: linear.x, angular.z)",
+    "nav2_max_velocity": (1.0, 0.0, 2.8),
+    "nav2_min_velocity": (0.0, 0.0, -2.8),
+    "reverse_allowed_under_nav2": False,
+    "odom_topic": "/odom (Isaac ground truth)",
+    "base_frame": "base_footprint",
+    "footprint_m": ((0.31, 0.2), (0.31, -0.2), (-0.35, -0.2), (-0.35, 0.2)),
+    "wheel_velocities_exposed_to_policy": False,
+    "verified_live": False,
+}
+
 BASE_SEMANTICS = {
     "policy_representation": "physical units: m/s forward, rad/s yaw",
     "forward_index": BASE_FORWARD_INDEX,
     "yaw_index": BASE_YAW_INDEX,
-    "positive_forward": "UNVERIFIED — assumed robot-forward",
-    "positive_yaw": "UNVERIFIED — assumed counter-clockwise viewed from above",
-    "units_expected_by_real_api": "UNKNOWN — normalized vs physical unresolved",
-    "limits": "UNKNOWN (vendor publishes 6 km/h ~ 1.67 m/s maximum)",
-    "command_rate": "UNKNOWN",
-    "kinematics": "UNKNOWN — vendor publishes 'six-wheeled' only; differential "
-                  "vs omnidirectional unresolved",
-    "verified": False,
-    "note": "Policy semantics are physical and stay independent of any "
-            "simulator normalization. Adapters own the conversion.",
+    "real": BASE_SEMANTICS_REAL,
+    "sim": BASE_SEMANTICS_SIM,
+    "note": "Policy semantics are physical and independent of simulator "
+            "normalization. Adapters own the conversion in both directions.",
 }
 
 
@@ -232,13 +263,16 @@ def assert_ready_for_training(contract: AlphaBot2Contract) -> None:
     problems = []
     if not contract.base_verified:
         problems.append(
-            "base semantics unverified (no public SDK; no public dataset "
-            "contains a base action)"
+            "base (v, omega) mapping not verified in a live simulator — the "
+            "kinematics are established (differential drive, both on the real "
+            "robot and in the Ai2 Bot2 asset) but the sign convention and "
+            "units have not been measured end-to-end"
         )
     if not contract.gripper_physical_verified:
         problems.append(
-            "gripper physical units/limits unverified (policy-side [0,1] "
-            "convention is defined, hardware mapping is not)"
+            "gripper aperture direction unverified — the EG2-4C2 asset "
+            "declares limits [0, 0.82] rad but does not state which end is "
+            "open; policy-side [0,1] is defined, the mapping is not"
         )
     if problems:
         raise ContractError(

@@ -282,8 +282,9 @@ class TestCameraContract(unittest.TestCase):
         self.assertEqual(CS.MODEL_KEYS["cam_front"], "base_0_rgb")
 
     def test_depth_and_extra_cameras_excluded(self):
+        """Exclusion keys now use Ai2 Bot2 asset frame names."""
         self.assertFalse(CS.CameraContract().describe()["depth"])
-        for k in ("back_rgb", "wrist_depth", "camera_top"):
+        for k in ("back_camera", "chassis_camera", "wrist_depth"):
             self.assertIn(k, CS.EXCLUDED)
 
     def test_missing_base_view_rejected(self):
@@ -303,9 +304,20 @@ class TestCameraContract(unittest.TestCase):
 
 class TestGuardsAndBlockers(unittest.TestCase):
     def test_training_blocked_on_unverified_base_and_gripper(self):
+        """Both gaps must be named. Asserts the property, not the phrasing.
+
+        The base *kinematics* are now established (differential drive, on the
+        real robot and in the Ai2 Bot2 asset); what remains unverified is the
+        live sign/unit mapping. The message wording changed accordingly, so
+        this checks that each subject is still reported rather than matching
+        an exact sentence.
+        """
         with self.assertRaises(ContractError) as ctx:
             assert_ready_for_training(AlphaBot2Contract())
-        self.assertIn("base semantics unverified", str(ctx.exception))
+        msg = str(ctx.exception).lower()
+        self.assertIn("base", msg)
+        self.assertIn("gripper", msg)
+        self.assertIn("verif", msg)
 
     def test_fully_verified_contract_passes(self):
         assert_ready_for_training(AlphaBot2Contract(
