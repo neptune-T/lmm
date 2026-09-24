@@ -1,5 +1,30 @@
 # AlphaBot 2 — public datasets, checkpoints and simulator assets
 
+> ## ⚠ CORRECTED 2026-09-24 — section A of this document is WRONG
+>
+> This audit concluded that **no public AlphaBot 2 simulator asset existed at
+> any fidelity**. That conclusion is **false**. A usable public third-party
+> stack was subsequently located:
+>
+> * `github.com/fiveages-sim/robot_descriptions` — `ai2_bot2_description`
+>   (xacro, meshes, ros2_control, nav2, OCS2), Apache-2.0
+> * `github.com/fiveages-sim/robot_usds` — `humanoid/Ai2/Bot2/Bot2.usda`
+>   Isaac Sim assets, Apache-2.0
+>
+> The search missed them because it queried vendor and Hugging Face channels
+> and searched for "AlphaBot"; the asset is published by a third party under
+> the name **"Ai2 Bot2"**, which neither query matched.
+>
+> A second claim is also corrected: this document reported that **no π0.5
+> AlphaBot adaptation existed**. Two do — see
+> [`ALPHABOT2_PI05_CHECKPOINT_AUDIT.md`](ALPHABOT2_PI05_CHECKPOINT_AUDIT.md).
+>
+> What still holds: **no public dataset contains a mobile-base action**,
+> including the one named `move_base_pick`.
+>
+> Current facts: [`ALPHABOT2_SIM_ASSET_PROVENANCE.md`](ALPHABOT2_SIM_ASSET_PROVENANCE.md),
+> [`ALPHABOT2_SIM_KINEMATIC_AUDIT.md`](ALPHABOT2_SIM_KINEMATIC_AUDIT.md).
+
 Audited 2026-09-21 against the Hugging Face Hub API and public repositories.
 Schemas below are read from each dataset's `meta/info.json`, not from READMEs.
 

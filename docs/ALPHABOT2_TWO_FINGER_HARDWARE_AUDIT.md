@@ -1,5 +1,20 @@
 # AlphaBot 2 two-finger hardware audit
 
+> ## ⚠ CORRECTED 2026-09-24
+>
+> This audit reported joint axes/limits as `UNAVAILABLE` and base semantics as
+> `UNKNOWN` because no robot description could be found. A public third-party
+> description has since been located, and
+> [`ALPHABOT2_SIM_KINEMATIC_AUDIT.md`](ALPHABOT2_SIM_KINEMATIC_AUDIT.md) now
+> carries **full per-joint axes, limits, effort and velocity** for all 14 arm
+> joints, the gripper and the base.
+>
+> Base semantics are corrected to **differential drive, `(v, ω)`**.
+>
+> Caveat that survives: those values come from a **third-party asset**, not the
+> official AI² digital twin, so they remain `PLAUSIBLE` for the real robot
+> until checked against it.
+
 Target: **AlphaBot 2 + dual 7-DoF arms + two-finger grippers + mobile base**
 (configuration confirmed by the project owner, 2026-09-21).
 

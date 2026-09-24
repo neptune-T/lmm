@@ -1,5 +1,19 @@
 # AlphaBot 2 v1 policy contract
 
+> ## ⚠ UPDATED 2026-09-24
+>
+> The 16-D / 18-D shape is **unchanged and confirmed appropriate**: the Ai2
+> Bot2 asset exposes exactly 7 revolute joints per arm, one actuated gripper
+> joint per side, and a differential base commanded as `(v, ω)`. Its
+> ros2_control command interface is **`position`**, so joint-space arm targets
+> need no IK.
+>
+> Corrected: this document described base semantics as unverified with
+> "no public dataset contains a base action" as the reason. The base
+> **kinematics** are now established on both the real robot and in the asset.
+> What remains unverified is the **live sign and unit mapping**, which is
+> gated in `AlphaBot2IsaacAdapter.base_signs_verified`.
+
 Frozen 2026-09-21. Executable source of truth:
 [`lmm/embodiments/alphabot2/contract.py`](../lmm/embodiments/alphabot2/contract.py).
 

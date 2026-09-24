@@ -1,5 +1,26 @@
 # AlphaBot 2 — specification audit
 
+> ## ⚠ CORRECTED 2026-09-24
+>
+> This document recorded several items as unavailable that are in fact
+> **established**. Corrections, operator-confirmed and/or corroborated by the
+> public Ai2 Bot2 asset:
+>
+> | Previously recorded | Corrected |
+> |---|---|
+> | Per-arm DoF "not published" | **7 DoF per arm**, confirmed |
+> | Base kinematics "UNKNOWN" | **Differential drive**, confirmed |
+> | Base command form "UNKNOWN" | **`(v, ω)` linear + angular velocity** |
+> | "No control API" | Joint-space following, Cartesian pose following, and FK/IK APIs all exist |
+> | "No gripper API" | A two-finger gripper API exists |
+> | Cameras "extrinsics unavailable" | Camera hardware/configuration is documented |
+> | "No robot description" | A public third-party description and Isaac USD exist |
+>
+> **Layer separation still applies**: real-robot SDK semantics and
+> simulator-controller semantics are tracked separately in
+> `contract.py` (`BASE_SEMANTICS_REAL` vs `BASE_SEMANTICS_SIM`) and must not
+> be conflated. The public asset is **not** the official digital twin.
+
 Audited 2026-09-21. **Official facts and third-party facts are kept in separate
 tables and are never merged.**
 
