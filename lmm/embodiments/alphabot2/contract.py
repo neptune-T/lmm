@@ -99,6 +99,13 @@ ACTION_LABELS: tuple[str, ...] = (
 assert len(PROPRIO_LABELS) == PROPRIO_DIM
 assert len(ACTION_LABELS) == ACTION_DIM
 
+#: The 18-D action above is the **low-level embodiment/debug interface**:
+#: absolute joint targets in the vendor (xacro) convention + grippers + (v, omega),
+#: live-qualified in Isaac (2026-09-28). It is not the VLA action representation;
+#: the policy-facing interface is ``cartesian.CARTESIAN_MOBILE_ACTION18_LABELS``,
+#: which the Cartesian executor lowers into this one.
+JOINT_MOBILE_ACTION18_LABELS = ACTION_LABELS
+
 
 class ContractError(ValueError):
     """The AlphaBot 2 contract was violated or used unverified."""
