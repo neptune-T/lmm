@@ -1,0 +1,935 @@
+{
+ "sections": {
+  "census": {
+   "ok": true,
+   "num_dof": 42,
+   "expected_dof": 42,
+   "num_links": 48,
+   "root_link": "body_link4",
+   "chassis_link": "base_link",
+   "fixed_base": false,
+   "total_mass_kg": 112.054,
+   "physics_dt_s": 0.005,
+   "rendering_dt_s": 0.005,
+   "physics_steps_per_world_step": {
+    "render_false": 1,
+    "render_true": 1
+   },
+   "gripper_dofs": [
+    "Gripper_Right/joints/gripper_joint",
+    "Gripper_Right/joints/left_inner_joint",
+    "Gripper_Right/joints/right_inner_joint",
+    "Gripper_Right/joints/right_outer_joint",
+    "Gripper_Left/joints/gripper_joint",
+    "Gripper_Left/joints/left_inner_joint",
+    "Gripper_Left/joints/right_inner_joint",
+    "Gripper_Left/joints/right_outer_joint",
+    "Gripper_Right/joints/left_pad_joint",
+    "Gripper_Right/joints/right_pad_joint",
+    "Gripper_Left/joints/left_pad_joint",
+    "Gripper_Left/joints/right_pad_joint"
+   ],
+   "resolved_contract_dofs": {
+    "joints/driving_left_joint": "Ai2_Bot2_Chassis/joints/driving_left_joint",
+    "joints/driving_right_joint": "Ai2_Bot2_Chassis/joints/driving_right_joint"
+   },
+   "dof_paths": [
+    "joints/body_joint4",
+    "joints/head_joint1",
+    "joints/body_joint3",
+    "joints/head_joint2",
+    "Arm_Right/joints/right_joint1",
+    "Arm_Left/joints/left_joint1",
+    "joints/body_joint2",
+    "Arm_Right/joints/right_joint2",
+    "Arm_Left/joints/left_joint2",
+    "joints/body_joint1",
+    "Arm_Right/joints/right_joint3",
+    "Arm_Left/joints/left_joint3",
+    "Arm_Right/joints/right_joint4",
+    "Arm_Left/joints/left_joint4",
+    "Ai2_Bot2_Chassis/joints/driven_fl_joint_v",
+    "Ai2_Bot2_Chassis/joints/driven_fr_joint_v",
+    "Ai2_Bot2_Chassis/joints/driven_rl_joint_v",
+    "Ai2_Bot2_Chassis/joints/driven_rr_joint_v",
+    "Ai2_Bot2_Chassis/joints/driving_left_joint",
+    "Ai2_Bot2_Chassis/joints/driving_right_joint",
+    "Arm_Right/joints/right_joint5",
+    "Arm_Left/joints/left_joint5",
+    "Ai2_Bot2_Chassis/joints/driven_fl_joint_h",
+    "Ai2_Bot2_Chassis/joints/driven_fr_joint_h",
+    "Ai2_Bot2_Chassis/joints/driven_rl_joint_h",
+    "Ai2_Bot2_Chassis/joints/driven_rr_joint_h",
+    "Arm_Right/joints/right_joint6",
+    "Arm_Left/joints/left_joint6",
+    "Arm_Right/joints/right_joint7",
+    "Arm_Left/joints/left_joint7",
+    "Gripper_Right/joints/gripper_joint",
+    "Gripper_Right/joints/left_inner_joint",
+    "Gripper_Right/joints/right_inner_joint",
+    "Gripper_Right/joints/right_outer_joint",
+    "Gripper_Left/joints/gripper_joint",
+    "Gripper_Left/joints/left_inner_joint",
+    "Gripper_Left/joints/right_inner_joint",
+    "Gripper_Left/joints/right_outer_joint",
+    "Gripper_Right/joints/left_pad_joint",
+    "Gripper_Right/joints/right_pad_joint",
+    "Gripper_Left/joints/left_pad_joint",
+    "Gripper_Left/joints/right_pad_joint"
+   ],
+   "right_arm_limits_live": {
+    "Arm_Right/joints/right_joint1": [
+     -3.1,
+     3.1
+    ],
+    "Arm_Right/joints/right_joint2": [
+     -2.0108,
+     1.5292
+    ],
+    "Arm_Right/joints/right_joint3": [
+     -1.5292,
+     4.6708
+    ],
+    "Arm_Right/joints/right_joint4": [
+     -2.27,
+     0.0
+    ],
+    "Arm_Right/joints/right_joint5": [
+     -4.6708,
+     1.5292
+    ],
+    "Arm_Right/joints/right_joint6": [
+     -1.22,
+     1.22
+    ],
+    "Arm_Right/joints/right_joint7": [
+     -2.09,
+     0.49
+    ]
+   },
+   "left_arm_limits_live": {
+    "Arm_Left/joints/left_joint1": [
+     -3.1,
+     3.1
+    ],
+    "Arm_Left/joints/left_joint2": [
+     -2.0108,
+     1.5292
+    ],
+    "Arm_Left/joints/left_joint3": [
+     -4.6708,
+     1.5292
+    ],
+    "Arm_Left/joints/left_joint4": [
+     -2.27,
+     0.0
+    ],
+    "Arm_Left/joints/left_joint5": [
+     -1.5292,
+     4.6708
+    ],
+    "Arm_Left/joints/left_joint6": [
+     -1.22,
+     1.22
+    ],
+    "Arm_Left/joints/left_joint7": [
+     -2.09,
+     0.49
+    ]
+   },
+   "limits_match_mapped_vendor": true,
+   "colliders_per_body": {
+    "/World/Bot2/body_link1": 1,
+    "/World/Bot2/body_link2": 1,
+    "/World/Bot2/body_link3": 1,
+    "/World/Bot2/body_link4": 1,
+    "/World/Bot2/head_link2": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/base_footprint": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_fl_link_h": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_fr_link_h": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_rl_link_h": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_rr_link_h": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driving_left_link": 1,
+    "/World/Bot2/Ai2_Bot2_Chassis/driving_right_link": 1,
+    "/World/Bot2/Arm_Right/base_link": 1,
+    "/World/Bot2/Arm_Right/link1": 1,
+    "/World/Bot2/Arm_Right/link2": 1,
+    "/World/Bot2/Arm_Right/link3": 1,
+    "/World/Bot2/Arm_Right/link4": 1,
+    "/World/Bot2/Arm_Right/link5": 1,
+    "/World/Bot2/Arm_Right/link6": 1,
+    "/World/Bot2/Arm_Right/link7": 1,
+    "/World/Bot2/Arm_Left/base_link": 1,
+    "/World/Bot2/Arm_Left/link1": 1,
+    "/World/Bot2/Arm_Left/link2": 1,
+    "/World/Bot2/Arm_Left/link3": 1,
+    "/World/Bot2/Arm_Left/link4": 1,
+    "/World/Bot2/Arm_Left/link5": 1,
+    "/World/Bot2/Arm_Left/link6": 1,
+    "/World/Bot2/Arm_Left/link7": 1,
+    "/World/Bot2/Gripper_Left/gripper_base": 1,
+    "/World/Bot2/Gripper_Left/left_outer_link": 1,
+    "/World/Bot2/Gripper_Left/left_pad": 1,
+    "/World/Bot2/Gripper_Left/left_inner_link": 1,
+    "/World/Bot2/Gripper_Left/right_inner_link": 1,
+    "/World/Bot2/Gripper_Left/right_outer_link": 1,
+    "/World/Bot2/Gripper_Left/right_pad": 1,
+    "/World/Bot2/Gripper_Right/gripper_base": 1,
+    "/World/Bot2/Gripper_Right/left_outer_link": 1,
+    "/World/Bot2/Gripper_Right/left_pad": 1,
+    "/World/Bot2/Gripper_Right/left_inner_link": 1,
+    "/World/Bot2/Gripper_Right/right_inner_link": 1,
+    "/World/Bot2/Gripper_Right/right_outer_link": 1,
+    "/World/Bot2/Gripper_Right/right_pad": 1
+   },
+   "wall_s": 0.23
+  },
+  "home_and_state16": {
+   "ok": true,
+   "state16": [
+    0.8334,
+    -0.0,
+    0.0,
+    -1.7799,
+    0.0,
+    -0.641,
+    0.0,
+    0.0001,
+    -0.8334,
+    0.0,
+    0.0,
+    -1.78,
+    0.0,
+    -0.641,
+    0.0,
+    0.0
+   ],
+   "shape": [
+    16
+   ],
+   "left_arm_err_vs_vendor_home": 0.0001,
+   "right_arm_err_vs_vendor_home": 0.00012,
+   "grippers_fraction": [
+    0.0001,
+    0.0
+   ],
+   "gb_left_chassis": [
+    0.2957,
+    0.227,
+    1.0534
+   ],
+   "gb_right_chassis": [
+    0.2957,
+    -0.227,
+    1.0534
+   ],
+   "approach_left": [
+    0.9998,
+    -0.0,
+    0.0182
+   ],
+   "approach_right": [
+    0.9998,
+    0.0001,
+    0.0182
+   ],
+   "mirror_residual_m": 0.0,
+   "fk_vs_isaac_home": {
+    "left": [
+     0.0037,
+     0.082
+    ],
+    "right": [
+     0.0037,
+     0.083
+    ]
+   },
+   "self_contact_pairs": [],
+   "ground_contact_bodies": [
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_fl_link_h",
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_fr_link_h",
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_rl_link_h",
+    "/World/Bot2/Ai2_Bot2_Chassis/driven_rr_link_h",
+    "/World/Bot2/Ai2_Bot2_Chassis/driving_left_link",
+    "/World/Bot2/Ai2_Bot2_Chassis/driving_right_link"
+   ],
+   "wall_s": 1.59
+  },
+  "arm_joint_calibration": {
+   "ok": true,
+   "n": 28,
+   "n_pass": 28,
+   "max_track_err": 0.00039,
+   "max_crosstalk": 0.00043,
+   "min_axis_cos": 1.0,
+   "max_disp_err_vs_fk_m": 0.00068,
+   "max_other_arm_disp_m": 5.5e-05,
+   "wall_s": 72.64
+  },
+  "gripper_calibration": {
+   "ok": true,
+   "rows": [
+    {
+     "cmd": 0.0,
+     "readback_left": 0.0,
+     "readback_right": 0.0,
+     "joint_left": 0.82,
+     "joint_right": 0.82,
+     "pad_sep_left_m": 0.10162,
+     "pad_sep_right_m": 0.10162,
+     "mimic_left": [
+      0.82,
+      0.82,
+      0.82,
+      0.82,
+      0.82
+     ],
+     "arm_err_left": 0.0001
+    },
+    {
+     "cmd": 0.25,
+     "readback_left": 0.2375,
+     "readback_right": 0.2375,
+     "joint_left": 0.6252,
+     "joint_right": 0.6252,
+     "pad_sep_left_m": 0.0855,
+     "pad_sep_right_m": 0.0855,
+     "mimic_left": [
+      0.6252,
+      0.6252,
+      0.6252,
+      0.6252,
+      0.6252
+     ],
+     "arm_err_left": 0.0001
+    },
+    {
+     "cmd": 0.5,
+     "readback_left": 0.4869,
+     "readback_right": 0.4869,
+     "joint_left": 0.4207,
+     "joint_right": 0.4207,
+     "pad_sep_left_m": 0.06836,
+     "pad_sep_right_m": 0.06836,
+     "mimic_left": [
+      0.4207,
+      0.4207,
+      0.4207,
+      0.4207,
+      0.4207
+     ],
+     "arm_err_left": 0.0001
+    },
+    {
+     "cmd": 0.75,
+     "readback_left": 0.7369,
+     "readback_right": 0.7369,
+     "joint_left": 0.2157,
+     "joint_right": 0.2157,
+     "pad_sep_left_m": 0.05167,
+     "pad_sep_right_m": 0.05167,
+     "mimic_left": [
+      0.2157,
+      0.2157,
+      0.2157,
+      0.2157,
+      0.2157
+     ],
+     "arm_err_left": 0.0001
+    },
+    {
+     "cmd": 1.0,
+     "readback_left": 0.9869,
+     "readback_right": 0.9869,
+     "joint_left": 0.0107,
+     "joint_right": 0.0107,
+     "pad_sep_left_m": 0.03617,
+     "pad_sep_right_m": 0.03617,
+     "mimic_left": [
+      0.0107,
+      0.0108,
+      0.0107,
+      0.0107,
+      0.0108
+     ],
+     "arm_err_left": 0.0001
+    }
+   ],
+   "monotonic_closing": true,
+   "policy_0_open_1_closed": true,
+   "left_right_sep_max_diff_m": 0.0,
+   "max_readback_err": 0.0131,
+   "wall_s": 9.8
+  },
+  "atomic_18d_action": {
+   "ok": true,
+   "world_steps_consumed": 20,
+   "backend_steps_consumed": 20,
+   "adapter_reported": [
+    10680,
+    10700,
+    20
+   ],
+   "sim_time_advanced_s": 0.1,
+   "policy_hz": 10.0,
+   "channels": {
+    "left_joint1": 0.062493,
+    "right_joint1": -0.062718,
+    "left_gripper": 0.127474,
+    "right_gripper": 0.062682,
+    "base_disp_m": 0.012336,
+    "base_dyaw_rad": 0.028112
+   },
+   "every_channel_moved": true,
+   "joint_target_keys": [
+    "Arm_Left/joints/left_joint1",
+    "Arm_Left/joints/left_joint2",
+    "Arm_Left/joints/left_joint3",
+    "Arm_Left/joints/left_joint4",
+    "Arm_Left/joints/left_joint5",
+    "Arm_Left/joints/left_joint6",
+    "Arm_Left/joints/left_joint7",
+    "Arm_Right/joints/right_joint1",
+    "Arm_Right/joints/right_joint2",
+    "Arm_Right/joints/right_joint3",
+    "Arm_Right/joints/right_joint4",
+    "Arm_Right/joints/right_joint5",
+    "Arm_Right/joints/right_joint6",
+    "Arm_Right/joints/right_joint7",
+    "Gripper_Left/joints/gripper_joint",
+    "Gripper_Right/joints/gripper_joint"
+   ],
+   "wall_s": 4.65
+  },
+  "base_calibration": {
+   "ok": true,
+   "forward": {
+    "cmd_v": 0.2,
+    "cmd_w": 0.0,
+    "duration_s": 2.0,
+    "wheel_radps": [
+     2.3529,
+     2.3529
+    ],
+    "along_chassis_x_m": 0.4029,
+    "along_chassis_y_m": 0.002,
+    "dz_m": -0.0,
+    "dyaw_rad": 0.0004,
+    "expected_x_m": 0.4,
+    "expected_dyaw_rad": 0.0,
+    "arm_drift_rad": 8e-05
+   },
+   "reverse": {
+    "cmd_v": -0.2,
+    "cmd_w": 0.0,
+    "duration_s": 2.0,
+    "wheel_radps": [
+     -2.3529,
+     -2.3529
+    ],
+    "along_chassis_x_m": -0.3946,
+    "along_chassis_y_m": 0.0025,
+    "dz_m": -0.0,
+    "dyaw_rad": -0.0091,
+    "expected_x_m": -0.4,
+    "expected_dyaw_rad": 0.0,
+    "arm_drift_rad": 2e-05
+   },
+   "yaw_ccw": {
+    "cmd_v": 0.0,
+    "cmd_w": 0.5,
+    "duration_s": 2.0,
+    "wheel_radps": [
+     -1.2235,
+     1.2235
+    ],
+    "along_chassis_x_m": 0.0009,
+    "along_chassis_y_m": 0.0005,
+    "dz_m": 0.0,
+    "dyaw_rad": 0.9735,
+    "expected_x_m": 0.0,
+    "expected_dyaw_rad": 1.0,
+    "arm_drift_rad": 1e-05
+   },
+   "yaw_cw": {
+    "cmd_v": 0.0,
+    "cmd_w": -0.5,
+    "duration_s": 2.0,
+    "wheel_radps": [
+     1.2235,
+     -1.2235
+    ],
+    "along_chassis_x_m": 0.0011,
+    "along_chassis_y_m": -0.0013,
+    "dz_m": -0.0,
+    "dyaw_rad": -0.9756,
+    "expected_x_m": 0.0,
+    "expected_dyaw_rad": -1.0,
+    "arm_drift_rad": 0.0
+   },
+   "forward_ratio": 1.007,
+   "reverse_ratio": 0.986,
+   "yaw_ccw_ratio": 0.974,
+   "yaw_cw_ratio": 0.976,
+   "signs_ok": true,
+   "convention": "+v along chassis +x; +omega counter-clockwise about world +z",
+   "wall_s": 18.96
+  },
+  "timing": {
+   "ok": true,
+   "physics_hz": 200.0,
+   "physics_steps_per_action": 20,
+   "policy_hz": 10.0,
+   "wall_s_per_action_no_render": 0.1581,
+   "realtime_factor_no_render": 0.632,
+   "asset_declared_physics_hz": 200,
+   "asset_declared_source": "humanoid/Ai2/Bot2/env/empty.usda",
+   "declared_ros2_control_hz": 50,
+   "wall_s": 3.49
+  },
+  "reset_reproducibility": {
+   "ok": true,
+   "state_diff_max": 0.0,
+   "chassis_diff_m": 0.0,
+   "home_err_max_rad": 0.0001205746650695394,
+   "wall_s": 16.23
+  },
+  "grasp_rehearsal_no_object": {
+   "ok": true,
+   "self_contacts_during_motion": [],
+   "track_err_rad": 0.00051,
+   "pad_mid_world": [
+    0.4509,
+    0.244,
+    0.6965
+   ],
+   "pad_mid_chassis": [
+    0.4518,
+    0.244,
+    0.696
+   ],
+   "pad_separation_axis_world": [
+    0.9999,
+    0.0004,
+    0.0169
+   ],
+   "approach_chassis": [
+    0.0169,
+    -0.0002,
+    -0.9999
+   ],
+   "fk_vs_isaac_m_deg": [
+    0.0039,
+    0.0
+   ],
+   "wall_s": 17.57
+  },
+  "cameras": {
+   "ok": true,
+   "head_camera_frame_axes_chassis": {
+    "x": [
+     -0.0,
+     -1.0,
+     0.0
+    ],
+    "y": [
+     -0.4994,
+     0.0,
+     -0.8664
+    ],
+    "z": [
+     0.8664,
+     -0.0,
+     -0.4994
+    ]
+   },
+   "head_camera_optical_axis_chassis": [
+    0.8664,
+    -0.0,
+    -0.4994
+   ],
+   "head_camera_pitch_down_deg": 29.96,
+   "xacro_cam_high_pitch_down_deg": 37.0,
+   "wrist_geometry": {
+    "left": {
+     "d405_prim": "/World/Bot2/Arm_Left/link7/link8/ee/ee_fb_405/camera_stand_d405/d405",
+     "cam_offset_from_gripper_axis_m": 0.1332,
+     "cam_to_pad_mid_m": 0.2035
+    },
+    "right": {
+     "d405_prim": "/World/Bot2/Arm_Right/link7/link8/ee/ee_fb_405/camera_stand_d405/d405",
+     "cam_offset_from_gripper_axis_m": 0.1332,
+     "cam_to_pad_mid_m": 0.2035
+    }
+   },
+   "wall_s_per_action_with_3_cameras": 0.257,
+   "frames": {
+    "cam_front": {
+     "shape": [
+      240,
+      320,
+      3
+     ],
+     "dtype": "uint8",
+     "mean": 182.2,
+     "black_frac": 0.002,
+     "centroids": {
+      "red": {
+       "x": 0.499,
+       "y": 0.801,
+       "px": 599
+      },
+      "green": {
+       "x": 0.264,
+       "y": 0.984,
+       "px": 70
+      },
+      "blue": {
+       "x": 0.648,
+       "y": 0.623,
+       "px": 527
+      },
+      "orange": null,
+      "yellow": {
+       "x": 0.761,
+       "y": 0.922,
+       "px": 670
+      }
+     },
+     "rendering_frame": 5761,
+     "rendering_time": 1.6049999641254544
+    },
+    "cam_left_wrist": {
+     "shape": [
+      240,
+      320,
+      3
+     ],
+     "dtype": "uint8",
+     "mean": 171.0,
+     "black_frac": 0.019,
+     "centroids": {
+      "red": null,
+      "green": {
+       "x": 0.975,
+       "y": 0.026,
+       "px": 137
+      },
+      "blue": null,
+      "orange": {
+       "x": 0.497,
+       "y": 0.534,
+       "px": 21
+      },
+      "yellow": {
+       "x": 0.492,
+       "y": 0.52,
+       "px": 1211
+      }
+     },
+     "rendering_frame": 5761,
+     "rendering_time": 1.6049999641254544
+    },
+    "cam_right_wrist": {
+     "shape": [
+      240,
+      320,
+      3
+     ],
+     "dtype": "uint8",
+     "mean": 73.3,
+     "black_frac": 0.515,
+     "centroids": {
+      "red": {
+       "x": 0.879,
+       "y": 0.305,
+       "px": 378
+      },
+      "green": {
+       "x": 0.934,
+       "y": 0.694,
+       "px": 284
+      },
+      "blue": {
+       "x": 0.823,
+       "y": 0.042,
+       "px": 589
+      },
+      "orange": null,
+      "yellow": {
+       "x": 0.507,
+       "y": 0.416,
+       "px": 537
+      }
+     },
+     "rendering_frame": 5761,
+     "rendering_time": 1.6049999641254544
+    }
+   },
+   "front_left_right_ok": true,
+   "front_upright_ok": true,
+   "front_red_centered": true,
+   "left_wrist_sees_cube": true,
+   "right_wrist_sees_target": true,
+   "synchronized_rendering_frame": true,
+   "wall_s": 6.88
+  },
+  "grasp_snapshot_restore": {
+   "ok": true,
+   "cube_start_world": [
+    0.4509,
+    0.244,
+    0.6945
+   ],
+   "pad_sep_closed_m": 0.0617,
+   "cube_size_m": 0.05,
+   "pad_cube_contact_pairs_after_close": [
+    "/World/Bot2/Gripper_Left/gripper_base <-> /World/cube",
+    "/World/Bot2/Gripper_Left/left_inner_link <-> /World/cube",
+    "/World/Bot2/Gripper_Left/left_outer_link <-> /World/cube",
+    "/World/Bot2/Gripper_Left/left_pad <-> /World/cube",
+    "/World/Bot2/Gripper_Left/right_inner_link <-> /World/cube",
+    "/World/Bot2/Gripper_Left/right_outer_link <-> /World/cube",
+    "/World/Bot2/Gripper_Left/right_pad <-> /World/cube"
+   ],
+   "cube_rise_at_snapshot_m": 0.0308,
+   "cube_rise_end_m": 0.0824,
+   "cube_still_in_contact_at_end": true,
+   "chassis_travel_after_snapshot_m": 0.146,
+   "restore_readback": {
+    "q_max_err": 0.0,
+    "cube_pos_err_m": 0.0
+   },
+   "n_actions_after_snapshot": 25,
+   "replay_vs_replay": {
+    "arm_and_gripper_actuated_max_rad": 0.0,
+    "gripper_mimic_max_rad": 0.0,
+    "caster_passive_max_rad": 0.0,
+    "wheels_max_rad": 0.0,
+    "chassis_max_m": 0.0,
+    "cube_max_m": 0.0
+   },
+   "replay_vs_original": {
+    "arm_and_gripper_actuated_max_rad": 0.09353411197662354,
+    "gripper_mimic_max_rad": 0.03382948040962219,
+    "caster_passive_max_rad": 0.09194386005401611,
+    "wheels_max_rad": 0.001258254051208496,
+    "chassis_max_m": 0.0006471859524026513,
+    "cube_max_m": 0.023188043385744095
+   },
+   "canonical_branch_vs_branch": {
+    "arm_and_gripper_actuated_max_rad": 0.0,
+    "gripper_mimic_max_rad": 0.0,
+    "caster_passive_max_rad": 0.0,
+    "wheels_max_rad": 0.0,
+    "chassis_max_m": 0.0,
+    "cube_max_m": 0.0
+   },
+   "canonical_vs_original": {
+    "arm_and_gripper_actuated_max_rad": 0.09353506565093994,
+    "gripper_mimic_max_rad": 0.03381296992301941,
+    "caster_passive_max_rad": 0.03104865550994873,
+    "wheels_max_rad": 0.002000570297241211,
+    "chassis_max_m": 0.0004337602877058089,
+    "cube_max_m": 0.02252703718841076
+   },
+   "canonical_restore_wall_s": 2.8,
+   "cube_rise_end_canonical_m": 0.082,
+   "cube_rise_end_replay_m": 0.082,
+   "captured": [
+    "articulation root pose + lin/ang velocity",
+    "all 42 DOF positions + velocities",
+    "position targets of the 22 controlled DOFs",
+    "wheel velocity targets",
+    "object poses + lin/ang velocities",
+    "backend step counter",
+    "sim time (recorded only)"
+   ],
+   "not_captured": [
+    "PhysX solver warm-start and contact caches",
+    "sim clock (cannot be rewound)"
+   ],
+   "wall_s": 43.03
+  },
+  "navigation_bounded": {
+   "ok": true,
+   "legs": [
+    {
+     "leg": "reverse",
+     "v": -0.2,
+     "w": 0.0,
+     "actions": 30
+    },
+    {
+     "leg": "turn_left",
+     "v": 0.0,
+     "w": 0.5,
+     "actions": 33
+    },
+    {
+     "leg": "forward",
+     "v": 0.25,
+     "w": 0.0,
+     "actions": 40
+    },
+    {
+     "leg": "turn_right",
+     "v": 0.0,
+     "w": -0.5,
+     "actions": 33
+    },
+    {
+     "leg": "forward",
+     "v": 0.25,
+     "w": 0.0,
+     "actions": 20
+    }
+   ],
+   "trace": [
+    {
+     "leg": "reverse",
+     "x": -0.59,
+     "y": -0.002,
+     "yaw": 0.003
+    },
+    {
+     "leg": "turn_left",
+     "x": -0.595,
+     "y": 0.001,
+     "yaw": 1.606
+    },
+    {
+     "leg": "forward",
+     "x": -0.672,
+     "y": 0.985,
+     "yaw": 1.649
+    },
+    {
+     "leg": "turn_right",
+     "x": -0.672,
+     "y": 1.004,
+     "yaw": 0.091
+    },
+    {
+     "leg": "forward",
+     "x": -0.185,
+     "y": 1.034,
+     "yaw": 0.063
+    }
+   ],
+   "commanded_path_length_m": 2.1,
+   "robot_obstacle_contacts": [],
+   "collision_free": true,
+   "max_arm_deviation_rad": 0.0001,
+   "max_chassis_tilt_deg": 0.0,
+   "obstacles_world": {
+    "obst_a": [
+     -1.5019,
+     0.5,
+     0.25
+    ],
+    "obst_b": [
+     0.8981,
+     1.0,
+     0.25
+    ],
+    "obst_c": [
+     0.0981,
+     1.8,
+     0.25
+    ],
+    "obst_d": [
+     -0.3019,
+     -0.75,
+     0.25
+    ]
+   },
+   "final_disp_m": [
+    -0.171,
+    1.0351,
+    0.0
+   ],
+   "final_dyaw_rad": 0.05,
+   "wall_s": 34.97
+  }
+ },
+ "boot_s": 62.6,
+ "build": {
+  "nested_leftover_bodies_or_joints": {
+   "Left": [],
+   "Right": []
+  },
+  "deactivated_world_anchors": [
+   "/World/Bot2/Gripper_Left/root_joint",
+   "/World/Bot2/Gripper_Right/root_joint"
+  ],
+  "gripper_base_reattach_err_m": {
+   "Left": 0.0,
+   "Right": 0.0
+  },
+  "right_arm_limit_patch": {
+   "Arm_Right/joints/right_joint3": {
+    "shipped_deg": [
+     -267.6171,
+     87.6167
+    ],
+    "patched_deg": [
+     -87.6169,
+     267.6169
+    ]
+   },
+   "Arm_Right/joints/right_joint5": {
+    "shipped_deg": [
+     -87.6167,
+     267.6171
+    ],
+    "patched_deg": [
+     -267.6169,
+     87.6169
+    ]
+   }
+  }
+ },
+ "contact_report_bodies_phase1": 48,
+ "grasp_plan": {
+  "cube_center_chassis": [
+   0.45,
+   0.25,
+   0.7
+  ],
+  "gripper_base_to_pad_mid_m": 0.1196,
+  "pre_grasp_vendor_q": [
+   -0.095,
+   0.0599,
+   0.015,
+   -1.0714,
+   -0.0251,
+   1.1493,
+   -0.038
+  ],
+  "grasp_vendor_q": [
+   -0.3611,
+   0.0453,
+   0.0296,
+   -0.4,
+   -0.0171,
+   0.7438,
+   -0.041
+  ],
+  "goal_err_m_deg": [
+   0.0,
+   0.0
+  ]
+ },
+ "grasp_objects_placed": true,
+ "contact_report_bodies_phase2": 49,
+ "phase2_start": {
+  "chassis_tilt_deg": 0.0,
+  "self_contacts": [],
+  "cube_world": [
+   0.4509,
+   0.244,
+   0.6945
+  ]
+ }
+}
