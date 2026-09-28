@@ -17,8 +17,12 @@ than the chest, which gives a better sight-line over receptacles during
 navigation. ``front_camera`` (chest) is the documented fallback and becomes the
 better choice the moment the neck is ever actuated.
 
-Nothing here is verified against rendered frames -- resolution, orientation,
-channel order and mirroring all require a running simulator.
+Live-verified on 2026-09-28 (Isaac Sim 4.5, RTX, see
+``docs/ALPHABOT2_ISAAC_LIVE_SMOKE.md``): 240x320x3 uint8 RGB, channel order
+confirmed with red/green/blue markers, head view upright and not mirrored, all
+three cameras rendered on the same frame. The asset ships camera *mounts* but
+no camera prims, so the extrinsics below are spec/geometry-derived, not the
+vendor's calibration.
 """
 
 from __future__ import annotations
@@ -41,6 +45,27 @@ ASSET_FRAMES: dict[str, str] = {
 }
 
 ALTERNATE_FRONT_FRAME = "front_camera"        # chest, rigid on body_link4
+
+#: USD prims the live backend attaches camera prims to, and how.
+USD_CAMERA_MOUNTS: dict[str, dict[str, object]] = {
+    "cam_front": {
+        "parent": "head_link2/head_camera",
+        "convention": "optical frame: +z optical axis, +x image right, +y image down",
+        "measured_pitch_down_deg": 29.96,
+        "xacro_cam_high_pitch_down_deg": 37.0,   # rpy 0 0.6458 0 -- the two public descriptions differ by 7 deg
+        "hfov_deg": 69.0,                         # RealSense D435 colour
+        "near_clip_m": 0.10,                      # clears the head shell around the mount
+    },
+    "cam_left_wrist": {
+        "parent": "Arm_Left/link7",
+        "position": "the D405 prim of the ee_fb_405 bracket",
+        "optical_axis": "towards pad midpoint + 0.10 m along the approach",
+        "image_up": "away from the gripper axis (fingers at the image bottom)",
+        "hfov_deg": 87.0,                         # RealSense D405
+        "near_clip_m": 0.02,
+    },
+    "cam_right_wrist": {"mirror_of": "cam_left_wrist", "parent": "Arm_Right/link7"},
+}
 WRIST_SENSOR_MODEL = "RealSense D405"
 
 EXCLUDED = {
@@ -65,6 +90,7 @@ ALPHABOT2_ACCOUNT_MAPPING_UNVERIFIED = {
     "observation.images.camera_right": "cam_right_wrist",
 }
 ALPHABOT2_ACCOUNT_RESOLUTION = (240, 320)
+SIM_RESOLUTION = ALPHABOT2_ACCOUNT_RESOLUTION     # rendered live at 240x320
 
 
 @dataclass(frozen=True)
@@ -90,6 +116,12 @@ class CameraContract:
             "frames_verified": self.frames_verified,
             "orientation_verified": self.orientation_verified,
             "channel_order_verified": self.channel_order_verified,
-            "note": "Resolution, orientation, RGB channel order and mirroring "
-                    "require a live render to verify.",
+            "note": "Flags are True only for LIVE_QUALIFIED, measured in Isaac "
+                    "on the public Ai2 Bot2 asset; extrinsics are "
+                    "spec/geometry-derived, not vendor-calibrated.",
         }
+
+
+#: The configuration qualified live on 2026-09-28.
+LIVE_QUALIFIED = CameraContract(resolution=SIM_RESOLUTION, frames_verified=True,
+                                orientation_verified=True, channel_order_verified=True)

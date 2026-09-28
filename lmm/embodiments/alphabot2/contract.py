@@ -33,11 +33,12 @@ Evidence and confidence
   confidence. Public data names them ``2FEG_l_Joint1`` / ``2FEG_r_Joint1``
   (2-Finger Electric Gripper) and exposes a single scalar per side. This
   matches the confirmed hardware configuration.
-* **Base forward/yaw** — **NOT VERIFIED.** No public SDK documents the base
-  interface, and no public dataset contains a base action of any kind
-  (including the one named ``move_base_pick``, whose name refers to the task,
-  not the action space). Dimensions 16-17 are a *project decision*, not an
-  observed fact.
+* **Base forward/yaw** — the real robot has a differential base with a
+  linear/angular velocity API (operator-confirmed official facts; see
+  ``BASE_SEMANTICS_REAL``). No public dataset contains a base action of any
+  kind (``move_base_pick`` names the task, not the action space), so the
+  real-robot sign convention is unverified. In the public Ai2 Bot2 simulator
+  asset the (v, omega) mapping was measured live (``BASE_SEMANTICS_SIM``).
 
 Known tension with the hardware
 -------------------------------
@@ -122,13 +123,18 @@ GRIPPER_SEMANTICS = {
     "real_api": "a two-finger gripper API exists on the AlphaBot 2 SDK "
                 "(operator-confirmed). Physical unit, open/closed limits and "
                 "sign are not documented publicly.",
-    "sim_actuated_joint": "{side}_gripper_joint",
+    "sim_actuated_joint": "Gripper_{Side}/joints/gripper_joint (USD DOF path; "
+                          "both grippers name it gripper_joint)",
     "sim_joint_limits_rad": (0.0, 0.82),
     "sim_mimic_joints": 5,
-    "sim_controller": "adaptive_gripper_controller/AdaptiveGripperController",
-    "aperture_direction": "UNVERIFIED — the EG2-4C2 description does not state "
-                          "whether joint=0 is open or closed. Must be measured "
-                          "in simulation before any data is recorded.",
+    "sim_controller": "PhysX position drive on gripper_joint (Isaac Python "
+                      "route; the asset's ros2_control adaptive gripper "
+                      "controller is not used)",
+    "aperture_direction": "MEASURED in the sim asset (Isaac 4.5, 2026-09-28): "
+                          "joint 0.0 = closed (pad separation 0.036 m), "
+                          "0.82 = open (0.102 m), monotonic, identical both "
+                          "sides. Policy 0 (open) -> joint 0.82. Real-robot "
+                          "2FEG direction still undocumented.",
     "grasp_events": "simulator-specific; not part of the policy contract",
     "note": "Deliberately NOT inherited from WXAI, which used a carriage "
             "position written kinematically with a 0.5 snap threshold.",
@@ -161,15 +167,21 @@ BASE_SEMANTICS_SIM = {
         "passive casters; nav2 velocity bounds pin vy to 0.0 in both max and "
         "min, which forbids lateral motion"
     ),
-    "command_topic": "/cmd_vel (geometry_msgs/Twist: linear.x, angular.z)",
+    "command_topic": "/cmd_vel on the asset's ROS route; on the live Isaac "
+                     "Python route the backend converts (v, omega) to wheel "
+                     "velocity targets (R 0.085 m, track 0.416 m)",
     "nav2_max_velocity": (1.0, 0.0, 2.8),
     "nav2_min_velocity": (0.0, 0.0, -2.8),
     "reverse_allowed_under_nav2": False,
     "odom_topic": "/odom (Isaac ground truth)",
-    "base_frame": "base_footprint",
+    "base_frame": "chassis base_link (+x forward); the chassis collider lives on base_footprint",
     "footprint_m": ((0.31, 0.2), (0.31, -0.2), (-0.35, -0.2), (-0.35, 0.2)),
     "wheel_velocities_exposed_to_policy": False,
-    "verified_live": False,
+    "verified_live": True,
+    "live_measurement": "2026-09-28, 200 Hz physics, 2 s per test: +0.2 m/s -> "
+                        "+0.403 m along chassis +x (lateral 2 mm); -0.2 m/s -> "
+                        "-0.395 m; +0.5 rad/s -> +0.974 rad (CCW about +z); "
+                        "-0.5 rad/s -> -0.976 rad",
 }
 
 BASE_SEMANTICS = {
@@ -263,16 +275,17 @@ def assert_ready_for_training(contract: AlphaBot2Contract) -> None:
     problems = []
     if not contract.base_verified:
         problems.append(
-            "base (v, omega) mapping not verified in a live simulator — the "
-            "kinematics are established (differential drive, both on the real "
-            "robot and in the Ai2 Bot2 asset) but the sign convention and "
-            "units have not been measured end-to-end"
+            "base (v, omega) not confirmed for this training run — it is "
+            "measured in the public Ai2 Bot2 sim asset (2026-09-28) but the "
+            "real-robot sign convention is undocumented; set base_verified "
+            "explicitly once the data source's convention is confirmed"
         )
     if not contract.gripper_physical_verified:
         problems.append(
-            "gripper aperture direction unverified — the EG2-4C2 asset "
-            "declares limits [0, 0.82] rad but does not state which end is "
-            "open; policy-side [0,1] is defined, the mapping is not"
+            "gripper physical mapping not confirmed for this training run — "
+            "measured in the sim asset (EG2-4C2 joint 0.0 = closed) but the "
+            "real 2FEG direction and units are undocumented; set "
+            "gripper_physical_verified explicitly once confirmed"
         )
     if problems:
         raise ContractError(
