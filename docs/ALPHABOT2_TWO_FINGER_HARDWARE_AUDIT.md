@@ -82,6 +82,13 @@ reachable workspace. Defensible for v1; revisit once the SDK exists.
 
 ### Mobile base — semantics entirely unknown
 
+> **Corrected 2026-09-28.** The table below is the 2026-09-21 state and is
+> superseded on kinematics and command form: the operator confirmed from the
+> official SDK that AlphaBot 2 has a **differential** base driven by
+> **linear/angular velocity** commands. Hardware sign, units, limits and rate
+> remain undocumented publicly. In the public Ai2 Bot2 **simulator** asset the
+> (v, ω) mapping was measured live ([`ALPHABOT2_ISAAC_LIVE_SMOKE.md`](ALPHABOT2_ISAAC_LIVE_SMOKE.md)).
+
 | Property | Status |
 |---|---|
 | Kinematics (differential vs omnidirectional) | **UNKNOWN**. "Six-wheeled" is published; six wheels disambiguates nothing. |

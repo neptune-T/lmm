@@ -3,9 +3,93 @@
 Static audit, extracted from the xacro at the pinned revisions in
 [`ALPHABOT2_SIM_ASSET_PROVENANCE.md`](ALPHABOT2_SIM_ASSET_PROVENANCE.md).
 
-> **Static only.** Nothing here was verified in a running simulator — Isaac Sim
-> is unreachable (see [`ALPHABOT2_ISAAC_BLOCKER.md`](ALPHABOT2_ISAAC_BLOCKER.md)).
-> Every row is "what the description file declares", not "what the physics did".
+> **Updated 2026-09-28 with live Isaac results** — see "Live findings" directly
+> below. The sections after it are the original static audit of the xacro
+> (2026-09-24), kept as written except where a live result contradicts them;
+> those spots are marked **[live]**.
+
+## Live findings (Isaac Sim 4.5, 2026-09-28)
+
+Evidence: `artifacts/alphabot2_arm_map_identification.json`,
+`artifacts/alphabot2_live_smoke.json`, `artifacts/alphabot2_joint_calibration.json`.
+
+### 1. The USD and the xacro use different joint conventions — per side
+
+The USD (`robot_usds`) and the xacro (`robot_descriptions`) are two public
+descriptions of the same robot and agree on geometry, but not on joint zeros
+and signs. Identified from screw axes measured in Isaac, then disambiguated and
+verified:
+
+| Side | `q_usd = sign · q_xacro + offset` |
+|---|---|
+| Left | sign `(+,+,+,+,+,+,+)`, offset `(0, −π/2, −π/2, 0, +π/2, 0, 0)` |
+| Right | sign `(+,+,−,+,−,−,+)`, offset `(0, −π/2, +π/2, 0, −π/2, 0, 0)` |
+
+Why the sides differ: `components/Ai2_Bot2_Arms/payloads/Side/right.usda` is
+`left.usda` with the joint names changed — identical joint frames, axes and
+limits — plus a y-mirror on the link1 **visual** only. The USD right arm is a
+*re-mounted copy* of the left arm; the xacro right arm is a *true mirror*
+(axes of joints 3–6 flipped). Kinematically the two still agree exactly once
+the right map is applied.
+
+Verification (gripper_base pose vs xacro FK, chassis frame):
+
+| Check | Left | Right |
+|---|---|---|
+| Random poses, identification run | ≤ 4.6 mm, ≤ 0.16° (5 poses) | ≤ 5.3 mm, ≤ 0.15° (6 poses) |
+| Vendor home, 200 Hz smoke | 3.7 mm, 0.08° | 3.7 mm, 0.08° |
+| Per-joint ±0.15 rad, all 28 moves | rotation-axis cosine 1.000, displacement error ≤ 0.68 mm | same |
+
+The ~4 mm residual is constant — a frame offset between the two descriptions'
+chassis origins — not a joint error.
+
+**Shoulder ambiguity resolved.** The shoulder (joints 1–3) admits an
+Euler-equivalent second map (`q1+π, −q2, …`) with the same gripper pose. It
+was rejected because it (a) contradicts joint 2's asymmetric hard stops
+([−0.44, 3.10] vendor ↔ [−2.01, 1.53] USD), and (b) is not the one that keeps
+joints 1–2 identical to the left arm. Link-COM comparison was inconclusive
+because of finding 3.
+
+### 2. The USD right arm ships left-arm joint limits (asset fix applied)
+
+Through the right map, the shipped right `joint3` [−267.6°, 87.6°] and `joint5`
+[−87.6°, 267.6°] exclude a 0.083 rad band around vendor `q3 = 0`, `q5 = 0` —
+which contains the vendor home pose. `isaac_backend.build_stage` widens them to
+the mapped vendor range ([−87.6°, 267.6°] and [−267.6°, 87.6°]); live limits
+read back equal to the mapped vendor limits on all 14 joints.
+
+### 3. MISMATCH (minor): right-arm inertials are the left arm's
+
+Because the right arm is a copy, its link COMs are the left arm's, not mirrored:
+link1/link2 COMs sit ~3 cm from the xacro's mirrored values (link3–6 ≤ 1.7 cm).
+Masses match the xacro except **link7: USD 0.4318 kg vs xacro 0.266 kg**
+(both sides). Effect: small dynamic differences; kinematics unaffected.
+
+### 4. MISMATCH (minor): head camera pitch
+
+The USD `head_link2/head_camera` frame is an optical frame (+z optical axis,
++x image right, +y image down) pitched **30.0°** down at zero neck angles; the
+xacro `cam_high_joint` (rpy `0 0.6458 0`) says **37.0°**. The two public
+descriptions disagree by 7°; the smoke uses the USD frame.
+
+### 5. Gripper
+
+EG2-4C2 measured: joint 0.0 = **closed**, 0.82 = **open**, monotonic, both
+sides identical, all 5 mimic joints track the actuated joint exactly. The DOF
+path is `Gripper_{Side}/joints/gripper_joint` after the re-attachment fix
+(provenance doc); the xacro's `{side}_gripper_joint` name does not exist in
+the USD.
+
+### 6. Base, collision, census
+
+* 42 DOFs: 14 arm + 2 actuated gripper + 10 gripper mimic + 4 body + 2 head +
+  2 drive wheels (`Ai2_Bot2_Chassis/joints/driving_{left,right}_joint`) + 8
+  caster. Floating base, root link `body_link4`, total mass 112.1 kg.
+* The chassis collider is the xacro's box (0.6 × 0.46 × 0.15 m at z = 0.1) on
+  `Ai2_Bot2_Chassis/base_footprint`; at rest only the 2 drive wheels and 4
+  casters touch the ground. 42 rigid bodies carry colliders.
+* No self-contacts at the vendor home pose.
+
 
 ## Summary
 
@@ -22,7 +106,10 @@ Static audit, extracted from the xacro at the pinned revisions in
 | Arm reach | link3 0.290 m + link4 0.309 m ≈ 0.60 m + EE | 700 mm excl. EE | **PLAUSIBLE** |
 | Total mass | chassis 64.8 kg + arms ~7.7 kg + body | 135 kg | **PLAUSIBLE** |
 
-**No `MISMATCH` found.** Two items need the real robot to resolve, flagged below.
+**No `MISMATCH` against the official AlphaBot 2 facts.** Two minor
+mismatches *between the two public descriptions* were found live (right-arm
+inertials, head-camera pitch; see "Live findings"). Items needing the real
+robot are flagged below.
 
 ## Kinematic tree
 
@@ -105,12 +192,9 @@ must perturb negative there.
 ✅ **One scalar reliably represents this gripper** — the contract's single
 gripper dimension per side is structurally correct for this asset.
 
-⚠ **Aperture direction is NOT established.** Limits are `[0, 0.82]` rad, but
-which end is open is not stated anywhere in the description, and mimic
-multipliers are all `+1` with mixed axis signs. Whether `0 = open` or
-`0 = closed` **must be measured in simulation**. The policy contract fixes
-`0.0 = fully open, 1.0 = fully closed`; the Isaac adapter owns that mapping and
-currently declares it `UNVERIFIED`.
+**[live]** Aperture direction measured: `0 = closed`, `0.82 = open` (pad-link
+separation 0.036 m → 0.102 m). The adapter maps policy `0.0 = open` to joint
+0.82.
 
 ⚠ `2FEG` (public dataset) vs `EG2-4C2` (asset): plausibly the same
 "2-finger electric gripper" family, **not proven identical**. Verdict
@@ -196,10 +280,11 @@ smoke path.
 
 Isaac hardware interface: `ros2_control_hardware_type:=isaac` selects
 `topic_based_ros2_control/TopicBasedSystem` with
-`/isaac/joint_command` and `/isaac/joint_states`. **Isaac integration is over
-ROS 2 topics, not a direct Python API** — this materially raises the dependency
-footprint (Isaac Sim + ROS 2 + ros2_control + three custom fiveages
-controllers).
+`/isaac/joint_command` and `/isaac/joint_states` — the asset's *intended*
+route. **[live]** It is not required: the USD carries PhysX position drives
+(arms: stiffness 6e5, damping 6e4) and velocity-driven wheels, and the live
+backend drives them through the Isaac Python articulation API. The A800 has no
+ROS 2.
 
 ## Naming: asset ↔ public dataset
 
@@ -221,6 +306,7 @@ before training on public data.
 
 ## Items requiring the real robot
 
-1. **Gripper aperture direction** — is `gripper_joint = 0` open or closed?
+1. **Gripper aperture direction on the real 2FEG** — the sim EG2-4C2 is
+   measured (0 = closed); the real gripper's command convention is not public.
 2. **Joint index alignment** — is asset `left_joint3` the same physical axis as
    dataset `ZPF_left_Joint3`?

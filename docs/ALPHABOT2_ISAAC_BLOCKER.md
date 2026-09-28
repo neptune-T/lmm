@@ -1,5 +1,19 @@
 # Isaac Sim execution blocker
 
+> ## ✅ RESOLVED 2026-09-28 — kept as a historical record
+>
+> * **Access:** the jump host now accepts the workstation's key (added by the
+>   operator); the second hop still uses the jump-host-resident A800 key.
+> * **Isaac:** Isaac Sim 4.5.0-rc.36 runs headless on the A800 from a private
+>   copy of `/share/cys/isaacsim-4.5` (the `/workspace` copy sits on bosfs2,
+>   which drops exec bits).
+> * **RTX:** the driver-version check is a false negative on 535.261.03 and is
+>   bypassed with `--/rtx/verifyDriverVersion/enabled=false`.
+> * **No ROS 2** on the host: the robot is driven through the Isaac Python
+>   articulation API instead of `topic_based_ros2_control`.
+>
+> Live results: [`ALPHABOT2_ISAAC_LIVE_SMOKE.md`](ALPHABOT2_ISAAC_LIVE_SMOKE.md).
+
 Recorded 2026-09-24. This blocks the live half of
 `ALPHABOT2_ISAAC_EMBODIMENT_SMOKE_PASS`.
 

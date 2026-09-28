@@ -1,5 +1,16 @@
 # AlphaBot 2 v1 policy contract
 
+> ## ✅ UPDATED 2026-09-28 — live Isaac qualification (simulator layer only)
+>
+> The 16-D / 18-D shape was executed end-to-end in Isaac Sim 4.5 on the public
+> third-party Ai2 Bot2 asset ([`ALPHABOT2_ISAAC_LIVE_SMOKE.md`](ALPHABOT2_ISAAC_LIVE_SMOKE.md)).
+> Measured **in the sim asset**: arm joint conventions per side (vendor/xacro
+> convention ↔ USD maps), gripper polarity (EG2-4C2 joint 0.0 = closed; policy
+> 0 = open → joint 0.82), base signs (+v along chassis +x, +ω counter-clockwise),
+> 200 Hz physics, 20 physics steps per action (10 Hz), cameras (240×320 RGB,
+> unmirrored). None of this establishes the **real robot's** SDK conventions;
+> the real-API layer stays as documented below.
+
 > ## ⚠ UPDATED 2026-09-24
 >
 > The 16-D / 18-D shape is **unchanged and confirmed appropriate**: the Ai2
@@ -102,9 +113,14 @@ kinematically with a 0.5 snap threshold; none of that is known to apply here.
 Policy-facing values are **physical** (m/s, rad/s) and stay independent of any
 simulator normalization — adapters own the conversion.
 
-Unverified: positive forward direction, positive yaw direction, limits,
-command rate, whether the real API expects normalized or physical units, and
-whether the base is differential or omnidirectional.
+Real robot (operator-confirmed official facts): differential base with a
+linear/angular velocity API. Unverified on hardware: positive forward and yaw
+directions, limits, command rate, and whether the API expects normalized or
+physical units.
+
+Sim asset (measured live 2026-09-28): differential; +v moves along chassis +x,
++ω turns counter-clockwise about world +z; achieved/commanded 1.007 forward,
+0.986 reverse, 0.974 / 0.976 yaw (caster scrub).
 
 **No public dataset contains a base action**, so dims 16–17 are a project
 decision. `assert_ready_for_training()` refuses while `base_verified=False`.
@@ -133,6 +149,6 @@ Depth excluded: π0.5 is RGB, and depth has no RoboCOIN counterpart.
 | 1 gripper dim per side | yes — two independent datasets |
 | Torso/head exist and are excluded | yes |
 | 32-D model padding | yes — real π0.5 checkpoint config |
-| Gripper physical units/limits | **no** |
-| Base semantics, units, signs, rate | **no** |
-| Joint axes/limits/zeros | **no — no URDF exists** |
+| Gripper physical units/limits | real: **no** · sim asset: **yes** (live, EG2-4C2 joint 0.0 = closed) |
+| Base semantics, units, signs, rate | real: kinematics yes (official), signs/units/rate **no** · sim asset: **yes** (live) |
+| Joint axes/limits/zeros | real: **no** · public xacro ↔ sim USD: **yes** (maps identified live; see kinematic audit) |

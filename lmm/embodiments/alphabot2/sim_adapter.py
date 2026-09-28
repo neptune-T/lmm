@@ -1,4 +1,11 @@
-"""AlphaBot 2 simulator adapter — blocked, deliberately non-functional.
+"""SUPERSEDED — historical record of the 2026-09-21 asset search.
+
+The conclusion below was wrong: the search missed the public third-party
+``fiveages-sim`` Ai2 Bot2 description and USD (located 2026-09-24, see
+``docs/ALPHABOT2_SIM_ASSET_PROVENANCE.md``). The working simulator path is
+:mod:`lmm.embodiments.alphabot2.isaac_adapter` +
+:mod:`lmm.embodiments.alphabot2.isaac_backend`, live-qualified 2026-09-28.
+This module is kept, still refusing, so the history of the claim is not lost.
 
 Asset search performed 2026-09-21 across every channel requested:
 
@@ -47,7 +54,11 @@ MISSING_ASSETS = {
 }
 
 _MESSAGE = (
-    "AlphaBot 2 simulator integration is BLOCKED: no full-body robot "
+    "AlphaBot2SimAdapter is SUPERSEDED: use "
+    "lmm.embodiments.alphabot2.isaac_adapter.AlphaBot2IsaacAdapter with "
+    "isaac_backend.IsaacArticulationBackend (public third-party Ai2 Bot2 "
+    "asset, live-qualified 2026-09-28).\n\n"
+    "Historical message (2026-09-21, since shown wrong): no full-body robot "
     "description exists publicly in any format.\n\n"
     "Missing: " + ", ".join(sorted(MISSING_ASSETS)) + ".\n\n"
     "Frontier discovery and cheap rollout scaling both require a simulator, so "
@@ -72,7 +83,9 @@ class AlphaBot2SimAdapter:
     def availability() -> dict[str, object]:
         return {
             "available": False,
-            "reason": "no public full-body robot description at any fidelity",
+            "superseded_by": "lmm.embodiments.alphabot2.isaac_adapter",
+            "reason": "historical (2026-09-21): no public full-body robot description "
+                      "found; superseded by the fiveages-sim Ai2 Bot2 asset",
             "searched_channels": 6,
             **MISSING_ASSETS,
         }
