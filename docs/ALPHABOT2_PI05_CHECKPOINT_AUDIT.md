@@ -120,3 +120,21 @@ Per the migration order of operations, the joint-vs-Cartesian choice is
 3. Cartesian brings the unhandled **quaternion double-cover** risk above.
 4. Cartesian would require IK in the loop; the asset provides OCS2 whole-body
    control that could supply it, but that adds a large dependency.
+
+## Addendum 2026-09-28 — relation to the live-qualified simulator
+
+Offline only. The checkpoint was **not** loaded or run, and it did **not**
+shape the smoke contract (16-D joint state / 18-D joint + base action).
+Relevant facts from the live Isaac qualification
+([`ALPHABOT2_ISAAC_LIVE_SMOKE.md`](ALPHABOT2_ISAAC_LIVE_SMOKE.md)):
+
+| Checkpoint property | Simulator side | Consequence |
+|---|---|---|
+| Dataset fps **10** | policy rate **10 Hz** (200 Hz physics / 20) | rates line up; chosen for this reason, not to fit the weights |
+| State `ZPF_{left,right}_Joint1..7.pos` + `2FEG_{l,r}_Joint1.pos`, grippers last | contract interleaves grippers (`0:7`, `7`, `8:15`, `15`) | explicit reindex needed for any reuse |
+| Joint zero/sign convention undeclared | sim state is in the public xacro convention (USD↔xacro maps identified live) | whether `ZPF_*` equals the xacro convention is **unknown**; comparing the checkpoint's `stats.json` state means with the xacro home pose would be a cheap first check |
+| Gripper `.pos` direction undeclared | sim EG2-4C2: joint 0 = closed; policy 0 = open | the checkpoint's gripper polarity must be established before reuse |
+| Cameras `camera_front/left/right/top`, 240×320 | sim renders `cam_front` + two wrist views at 240×320 | resolution matches; the wrist-vs-third-person identity of `camera_left/right` is still unverified; no `camera_top` in the sim contract |
+| Cartesian EE action, quaternion `qx..qw` | sim gripper_base pose available from PhysX / xacro FK (≤ 4 mm) | a Cartesian head is technically supportable later; not adopted |
+
+The joint-vs-Cartesian decision stays deferred.
