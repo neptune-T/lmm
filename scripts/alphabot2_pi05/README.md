@@ -16,5 +16,9 @@ workspace `/nix/yanjun/zts/alphabot2/hf` (checkpoint and dataset pinned by revis
 | `pi05_runtime.py` | loads the checkpoint exactly as trained (only the tokenizer source differs) |
 | `pi05_offline_check.py`, `pi05_diag.py` | executes the checkpoint on training frames; input-sensitivity table |
 | `pi05_fkbase.py` | how far recorded targets lead the observed arm |
+| `pi05_server.py` | serves the checkpoint on 127.0.0.1 (numpy-version-neutral array codec) for the Isaac client |
+| `pilot_to_lerobot.py` | pilot episodes -> local LeRobot v3 dataset (checkpoint state convention, 18-D action) |
+| `sft_train.py` | **prepared, not launched**: lerobot-train + public-tokenizer shim, for `configs/alphabot2_pi05_sft_pilot.json` |
+| `sft_dryrun.py` | SFT readiness: one forward loss, no backward/optimizer/checkpoint |
 
 Outputs: `artifacts/alphabot2_pi05_contract_evidence.json`.
