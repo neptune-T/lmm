@@ -1,0 +1,80 @@
+{
+ "probe_cpu_1": {
+  "mode": "cpu",
+  "n_robots": 1,
+  "build_s": 6.9,
+  "steps": 400,
+  "wall_s": 3.968,
+  "physics_steps_per_s": 100.8,
+  "robot_steps_per_s": 100.8,
+  "realtime_factor_per_env": 0.504,
+  "aggregate_realtime_factor": 0.504,
+  "robots_moved": 1,
+  "num_dof": 42
+ },
+ "probe_cpu_2": {
+  "mode": "cpu",
+  "n_robots": 2,
+  "build_s": 7.3,
+  "steps": 400,
+  "wall_s": 7.371,
+  "physics_steps_per_s": 54.3,
+  "robot_steps_per_s": 108.5,
+  "realtime_factor_per_env": 0.271,
+  "aggregate_realtime_factor": 0.543,
+  "robots_moved": 2,
+  "num_dof": 42
+ },
+ "probe_cpu_4": {
+  "mode": "cpu",
+  "n_robots": 4,
+  "build_s": 8.0,
+  "steps": 400,
+  "wall_s": 13.945,
+  "physics_steps_per_s": 28.7,
+  "robot_steps_per_s": 114.7,
+  "realtime_factor_per_env": 0.143,
+  "aggregate_realtime_factor": 0.574,
+  "robots_moved": 4,
+  "num_dof": 42
+ },
+ "probe_cpu_8": {
+  "mode": "cpu",
+  "n_robots": 8,
+  "build_s": 10.4,
+  "steps": 400,
+  "wall_s": 28.816,
+  "physics_steps_per_s": 13.9,
+  "robot_steps_per_s": 111.0,
+  "realtime_factor_per_env": 0.069,
+  "aggregate_realtime_factor": 0.555,
+  "robots_moved": 8,
+  "num_dof": 42
+ },
+ "probe_gpu_1": {
+  "mode": "gpu",
+  "n_robots": 1,
+  "build_s": 6.8,
+  "steps": 400,
+  "wall_s": 45.031,
+  "physics_steps_per_s": 8.9,
+  "robot_steps_per_s": 8.9,
+  "realtime_factor_per_env": 0.044,
+  "aggregate_realtime_factor": 0.044,
+  "robots_moved": 1,
+  "num_dof": 42
+ },
+ "probe_gpu_4": {
+  "mode": "gpu",
+  "n_robots": 4,
+  "build_s": 8.1,
+  "steps": 400,
+  "wall_s": 42.901,
+  "physics_steps_per_s": 9.3,
+  "robot_steps_per_s": 37.3,
+  "realtime_factor_per_env": 0.047,
+  "aggregate_realtime_factor": 0.186,
+  "robots_moved": 4,
+  "num_dof": 42
+ }
+}
