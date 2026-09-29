@@ -47,6 +47,24 @@ def reset_to(env, episode_id):
     return env.reset()
 
 
+def fix_start(env) -> dict:
+    """Embodiment deviation, applied to every AlphaBot episode: OVMM start poses were sampled on the
+    Stretch navmesh (radius 0.3); when one is not navigable for AlphaBot (radius per the audit), the
+    robot is moved to the nearest navigable point, yaw unchanged. Returns the move (m) for the record."""
+    import magnum as mn
+    rob = robot(env)
+    pf = env.sim.pathfinder
+    p = rob.sim_obj.translation
+    if pf.is_navigable(p):
+        return {"moved_m": 0.0, "navigable": True}
+    s = pf.snap_point(p)
+    if not np.isfinite(np.array(s)).all():
+        return {"moved_m": None, "navigable": False}
+    tr = rob.sim_obj.transformation
+    rob.sim_obj.transformation = mn.Matrix4.from_(tr.rotation(), s)
+    return {"moved_m": float((s - p).length()), "navigable": True}
+
+
 #: Simulated seconds per policy action and physics substeps (asserted by the smoke).
 ACTION_DT_S, PHYSICS_DT_S = 0.1, 0.005
 

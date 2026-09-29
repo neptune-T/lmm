@@ -273,7 +273,7 @@
     </collision>
   </link>
   <joint name="body_joint1" type="fixed">
-    <origin rpy="-1.570800000 -0.000000000 0.000000000" xyz="0.19155 0 0.294" />
+    <origin rpy="-1.570804425 -1.100000000 0.000007217" xyz="0.19155 0 0.294" />
     <parent link="base_link" />
     <child link="body_link1" />
   </joint>
@@ -295,7 +295,7 @@
     </collision>
   </link>
   <joint name="body_joint2" type="fixed">
-    <origin xyz="0 -0.38704 0" rpy="0.000000000 -0.000000000 0.000000000" />
+    <origin xyz="0 -0.38704 0" rpy="0.000000000 -0.000000000 2.200000000" />
     <parent link="body_link1" />
     <child link="body_link2" />
   </joint>
@@ -317,7 +317,7 @@
     </collision>
   </link>
   <joint name="body_joint3" type="fixed">
-    <origin xyz="0 -0.27 0" rpy="0.000000000 -0.000000000 0.000000000" />
+    <origin xyz="0 -0.27 0" rpy="0.000000000 -0.000000000 -1.100000000" />
     <parent link="body_link2" />
     <child link="body_link3" />
   </joint>

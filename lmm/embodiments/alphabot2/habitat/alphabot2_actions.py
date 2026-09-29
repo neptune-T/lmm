@@ -10,7 +10,7 @@ base-step split (the WXAI defect).
 
 Base: (v, omega) are physical units. They are integrated over the action
 interval ``action_dt`` (0.1 s) in ``base_substeps`` pieces, each filtered by
-the navmesh (``step_filter``, slides along walls), exactly as habitat-lab's
+the navmesh with sliding (``pathfinder.try_step``), as habitat-lab's
 BaseVelAction does for one piece -- but with the interval made explicit
 instead of habitat's ``1/ctrl_freq`` (which ran at 120 Hz under a 0.032 s
 env step for the old embodiments). No normalized [-1, 1] input.
@@ -21,7 +21,7 @@ mechanism). Per hand, with its own RearrangeGraspManager (index 0 = left,
 holds nothing snaps the task object only if the object's centre lies inside
 the hand's closing region (pad midpoint within the object's bounding box
 expanded by ``grasp_margin``) and the object's width across the fingers fits
-the 0.10 m aperture. The fingers then stop at the object width. Opening
+the measured pad gap (1.5-7.8 cm). The fingers then stop at the object width. Opening
 releases. A second hand cannot take an object already held. Every grasp /
 release is logged as a simulator event (``last_info``) and never enters the
 policy observation.
@@ -42,15 +42,16 @@ from habitat.tasks.rearrange.utils import UsesArticulatedAgentInterface
 
 from .alphabot2_robot import GRIPPER_OPEN_RAD, SIDES
 
-#: measured EG2-4C2 joint -> pad-link separation (Isaac and this URDF agree exactly)
-_SEP_Q = np.array([0.0107, 0.2157, 0.4207, 0.6252, 0.82])
-_SEP_M = np.array([0.0362, 0.0517, 0.0684, 0.0855, 0.1016])
-PAD_THICKNESS_M = 0.0362 - 0.0          # pad-link separation at contact of two pad faces ~ closed reading
+#: EG2-4C2 pad-SURFACE gap vs gripper joint, measured from the xacro collision meshes
+#: (gripper_gap.py): 1.4 cm fully closed ... 8.0 cm fully open, linear in between.
+_GAP_Q = np.array([0.0, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72, 0.82])
+_GAP_M = np.array([0.0142, 0.0231, 0.0324, 0.0422, 0.0521, 0.0622, 0.0722, 0.0804])
+MIN_GRASP_WIDTH_M, MAX_GRASP_WIDTH_M = 0.015, 0.078
 
 
 def q_for_aperture(width_m: float) -> float:
     """Gripper joint at which the pads close on an object of ``width_m`` across the fingers."""
-    return float(np.interp(width_m + _SEP_M[0], _SEP_M, _SEP_Q))
+    return float(np.interp(width_m, _GAP_M, _GAP_Q))
 
 
 @registry.register_task_action
@@ -63,7 +64,7 @@ class AlphaBot2JointMobileAction(ArticulatedAgentAction):
         self.v_max = float(config.get("v_max", 1.0))
         self.w_max = float(config.get("w_max", 2.8))
         self.close_threshold = float(config.get("close_threshold", 0.5))
-        self.grasp_margin = float(config.get("grasp_margin", 0.02))
+        self.grasp_margin = float(config.get("grasp_margin", 0.005))
         self.vel = habitat_sim.physics.VelocityControl()
         self.vel.controlling_lin_vel = self.vel.controlling_ang_vel = True
         self.vel.lin_vel_is_local = self.vel.ang_vel_is_local = True
@@ -94,7 +95,13 @@ class AlphaBot2JointMobileAction(ArticulatedAgentAction):
                 tr = robot.sim_obj.transformation
                 rs = habitat_sim.RigidState(mn.Quaternion.from_matrix(tr.rotation()), tr.translation)
                 tgt = self.vel.integrate_transform(dt, rs)
-                end = self._sim.step_filter(rs.translation, tgt.translation)
+                # sliding navmesh filter (pathfinder.try_step), NOT sim.step_filter: OVMM sets
+                # allow_sliding=False, where try_step_no_sliding stops the base dead the moment it
+                # grazes the boundary -- and Detour paths run exactly along it (measured: blocked
+                # after ~1 m on corridor segments). The boundary is already the full chassis radius
+                # (0.38 m) away from real geometry, so sliding along it involves no contact; real
+                # robot-scene contacts are measured separately every step.
+                end = self._sim.pathfinder.try_step(rs.translation, tgt.translation)
                 filtered += float((end - tgt.translation).length())
                 robot.sim_obj.transformation = mn.Matrix4.from_(tgt.rotation.to_matrix(), end)
         end = robot.sim_obj.transformation
@@ -144,10 +151,15 @@ class AlphaBot2JointMobileAction(ArticulatedAgentAction):
                 return info
             cand = self._grasp_candidate(side_idx)
             other = mgrs[1 - side_idx]
-            if cand is not None and cand[3] <= 0.10 and not (other.is_grasped and other.snap_idx == cand[1].object_id):
+            if (cand is not None and MIN_GRASP_WIDTH_M <= cand[3] <= MAX_GRASP_WIDTH_M
+                    and not (other.is_grasped and other.snap_idx == cand[1].object_id)):
                 idx, obj, d, width = cand
                 self._articulated_agent_mgr.active_grasp_manager_idx = side_idx
                 mgr.snap_to_obj(obj.object_id, force=False)
+                # keep the object exactly where it is relative to the hand: in kinematic mode
+                # snap_to_obj never sets keep_T, and update_object_to_grasp would then teleport the
+                # object's origin onto the pad midpoint with the hand's orientation every step
+                mgr._keep_T = robot.ee_transform(side_idx).inverted() @ obj.transformation
                 robot.set_gripper_q(side, q_for_aperture(width))
                 info.update({"grasp_event": True, "object_index": idx, "object_width_m": width, "dist_m": d})
                 self.events.append({"type": "grasp", "hand": side, "object_index": idx, "width_m": width})

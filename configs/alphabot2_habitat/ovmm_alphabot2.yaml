@@ -13,6 +13,10 @@ defaults:
   - _self_
 
 habitat:
+  environment:
+    # 10 Hz continuous control: Stretch's 1250 counted coarse waypoint-teleport steps;
+    # 3000 x 0.1 s = 300 s of robot time (documented embodiment deviation)
+    max_episode_steps: 3000
   gym:
     obs_keys:
       - head_rgb
@@ -31,13 +35,20 @@ habitat:
     # 60 Hz it added 3-4, measured 0.115-0.120 s per action).
     ctrl_freq: 200.0
     ac_freq_ratio: 19
+    # render AFTER the physics substeps: OVMM's concur_render starts rendering before them, so a
+    # physics-driven object (released, falling) was shown 0.1 s stale while proprio was current
+    # (timing_sync.py: 0/6 frames in sync vs 6/6 exact re-render matches with this off)
+    concur_render: False
     agents:
       main_agent:
         articulated_agent_urdf: /nix/yanjun/zts/alphabot2/habitat_assets/alphabot2/alphabot2.urdf
         articulated_agent_type: AlphaBot2Robot
         grasp_managers: 2        # manager 0 = left hand, 1 = right hand
-        radius: 0.3              # navmesh agent radius; set by the footprint audit
-        height: 1.7
+        # navmesh agent radius = chassis circumscribed radius about the wheel centre (0.378 m,
+        # footprint.py); the navigation tuck keeps both arms inside it (0.369 m, tuck_search.py).
+        # Stretch used 0.3; the navmesh is recomputed and cached per robot class.
+        radius: 0.38
+        height: 1.5              # tallest point of the crouched robot is 1.434 m (footprint.py)
         sim_sensors:
           head_rgb_sensor: {height: 240, width: 320, hfov: 69}
           head_depth_sensor: {height: 240, width: 320, hfov: 69}

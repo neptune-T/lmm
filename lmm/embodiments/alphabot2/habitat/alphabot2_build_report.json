@@ -29,7 +29,7 @@
     0.0,
     1.0
    ],
-   "q": 0.0
+   "q": -1.1
   },
   "body_joint2": {
    "type": "revolute",
@@ -43,7 +43,7 @@
     0.0,
     1.0
    ],
-   "q": 0.0
+   "q": 2.2
   },
   "body_joint3": {
    "type": "revolute",
@@ -57,7 +57,7 @@
     0.0,
     1.0
    ],
-   "q": 0.0
+   "q": -1.1
   },
   "body_joint4": {
    "type": "revolute",
@@ -136,6 +136,12 @@
  "head_posture": {
   "head_joint1": 0.0,
   "head_joint2": 0.2
+ },
+ "torso_posture": {
+  "body_joint1": -1.1,
+  "body_joint2": 2.2,
+  "body_joint3": -1.1,
+  "body_joint4": 0.0
  },
  "habitat_root": {
   "new_root": "habitat_base",
@@ -236,5 +242,5 @@
    "offset": 0.0
   }
  },
- "urdf_sha256": "0a4f071772fdfdfe47517989bb482a47069adecb647c5d33c7934e111cd4945e"
+ "urdf_sha256": "39a04b47d3974345a91732936572a48eea0cb717c89688430ca65c37deeefb04"
 }

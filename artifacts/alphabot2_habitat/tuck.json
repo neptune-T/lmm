@@ -1,0 +1,50 @@
+{
+ "wheel_centre_xy": [
+  0.0,
+  0.0
+ ],
+ "home": {
+  "radius_m": 0.4109656046280039,
+  "penalty": 0.0
+ },
+ "tuck": {
+  "left_q": [
+   0.8731,
+   -0.0265,
+   0.0657,
+   -1.7393,
+   0.0325,
+   -0.6495,
+   -0.0281
+  ],
+  "right_q": [
+   -0.8731,
+   -0.0265,
+   0.0657,
+   -1.7393,
+   0.0325,
+   -0.6495,
+   -0.0281
+  ],
+  "radius_m": 0.36869604357876234,
+  "joint_distance_from_home_rad": 0.10084751849034221,
+  "radius_bound_m": 0.37,
+  "left_gripper_base_xyz": [
+   0.163,
+   0.191,
+   0.676
+  ]
+ },
+ "static_links_checked": [
+  "body_link1",
+  "body_link2",
+  "body_link3",
+  "body_link4",
+  "head_link2"
+ ],
+ "constraints": {
+  "margin_m": 0.02,
+  "min_z_m": 0.3,
+  "search": "6000 random + 1600 local"
+ }
+}

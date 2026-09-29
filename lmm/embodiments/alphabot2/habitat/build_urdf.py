@@ -16,8 +16,8 @@ Post-processing, each step reported in ``build_report.json``:
 1. meshes referenced by the URDF are copied next to it and paths made
    relative (Habitat does not resolve ``file://``/``package://``);
 2. ROS-only tags (ros2_control, gazebo, transmission) removed;
-3. v1 fixed joints: torso ``body_joint1..4`` at 0 and the neck at the canonical
-   posture (``--head-pitch``) become ``fixed`` with the angle composed into the
+3. v1 fixed joints: torso ``body_joint1..4`` at the canonical crouch (``--torso``)
+   and the neck at the canonical posture (``--head-pitch``) become ``fixed`` with the angle composed into the
    joint origin; drive wheels and casters become ``fixed`` because Habitat
    moves the base kinematically (OVMM convention) -- their geometry is kept;
 4. ``<mimic>`` tags are kept for the record (Bullet ignores them); the robot
@@ -50,7 +50,10 @@ PACKAGES = {
 }
 REVISIONS = {"robot_descriptions": "bd491829961a8562306515001103af3b3737fbc7",
              "robot-descriptions-common": "92fa1ebf7b7b6a36f8e277dda48706903e57101d"}
-TORSO = {f"body_joint{i}": 0.0 for i in range(1, 5)}
+#: Canonical fixed v1 torso posture for OVMM (knee-style lift, chest upright: (-a, 2a, -a, 0), a = 1.1).
+#: With the torso at 0 the arms reach only grasp points 0.65-1.2 m above the floor, i.e. 17 % (val) /
+#: 37 % (train) of OVMM episodes; this crouch reaches 0.35-1.2 m (see docs/ALPHABOT2_OVMM_EMBODIMENT.md).
+CANONICAL_TORSO = (-1.1, 2.2, -1.1, 0.0)
 ROS_ONLY = ("ros2_control", "gazebo", "transmission")
 
 
@@ -125,6 +128,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--head-pitch", type=float, default=0.2)
     ap.add_argument("--head-yaw", type=float, default=0.0)
+    ap.add_argument("--torso", default=",".join(str(v) for v in CANONICAL_TORSO))
     args = ap.parse_args()
     out = Path(args.out)
     if out.exists():
@@ -143,7 +147,9 @@ def main():
     # --- fixed v1 joints
     joints = {j.get("name"): j for j in root.findall("joint")}
     head = {"head_joint1": args.head_yaw, "head_joint2": args.head_pitch}
-    for name, q in {**TORSO, **head}.items():
+    torso = {f"body_joint{i + 1}": float(v) for i, v in enumerate(args.torso.split(","))}
+    rep["torso_posture"] = torso
+    for name, q in {**torso, **head}.items():
         if name not in joints:
             raise SystemExit(f"xacro has no joint {name!r}; refusing to guess")
         rep["frozen_joints"][name] = freeze(joints[name], q)

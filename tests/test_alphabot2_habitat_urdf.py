@@ -5,6 +5,7 @@ import numpy as np
 
 from lmm.embodiments.alphabot2 import isaac_adapter as IA
 from lmm.embodiments.alphabot2 import kinematics as K
+from lmm.embodiments.alphabot2.habitat.constants import TORSO
 from lmm.embodiments.alphabot2.habitat.urdf_kin import URDFKin
 
 
@@ -37,9 +38,18 @@ class TestHabitatURDF(unittest.TestCase):
             for _ in range(100):
                 q = rng.uniform(K.JOINT_LIMITS[:, 0], K.JOINT_LIMITS[:, 1])
                 T = self.u.pose(f"{side}_gripper_base", {f"{side}_joint{i + 1}": q[i] for i in range(7)}, base="base_link")
-                R = K.fk(side, q)
+                R = K.fk_chassis(side, q, TORSO)          # arm frame A (reference) composed with the fixed torso
                 self.assertLess(np.linalg.norm(T[:3, 3] - R[:3, 3]), 1e-9)
                 self.assertLess(np.linalg.norm(K.rotvec(T[:3, :3].T @ R[:3, :3])), 1e-9)
+
+    def test_arm_frame_is_torso_attached(self):
+        # the crouched torso stays upright: arm frame A is a pure translation of base_link
+        A = K.arm_frame_in_chassis(TORSO)
+        np.testing.assert_allclose(A[:3, :3], np.eye(3), atol=1e-4)
+        self.assertLess(A[2, 3], -0.3)
+        np.testing.assert_allclose(K.arm_frame_in_chassis((0, 0, 0, 0)), np.eye(4), atol=1e-12)
+        for b in range(4):
+            self.assertTrue(K.BODY_LIMITS[b, 0] <= TORSO[b] <= K.BODY_LIMITS[b, 1])
 
     def test_joint_limits_equal_vendor(self):
         for side in ("left", "right"):

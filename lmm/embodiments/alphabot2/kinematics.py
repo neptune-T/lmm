@@ -187,3 +187,35 @@ def ik(side: str, target: np.ndarray, seed, *, margin: float = 0.02, max_iters: 
     return IKResult(q=q, converged=bool(pe < max(pos_tol * 10, 1e-3) and re < max(rot_tol * 10, 0.01)),
                     pos_err_m=pe, rot_err_rad=re, iterations=it, at_limit=at,
                     max_step_rad=float(np.max(np.abs(q - seed))))
+
+
+# --------------------------------------------------------------------------
+# Torso (body_joint1..4): the arm frame A
+# --------------------------------------------------------------------------
+#: Every arm-side quantity in this package -- fk/ik above, frame B and the
+#: Cartesian action in pi05_contract, CartesianExecutor -- is expressed in the
+#: ARM FRAME A: the chassis base_link frame as it is when the torso is at zero,
+#: rigidly attached to body_link4. With the torso at zero A == base_link (the
+#: Isaac-qualified case). With a fixed crouched torso the arms, the arm-relative
+#: Cartesian semantics and the IK are unchanged; only A moves relative to the
+#: chassis, by ``arm_frame_in_chassis(torso)``.
+BODY_AXES = ((0.0, 0.0, 1.0),) * 4
+BODY_LIMITS = np.array([(-1.1868, 0.0), (-0.38397, 2.7576), (-1.5708, 0.5236), (-1.5708, 1.5708)])
+
+
+def torso_transform(qb) -> np.ndarray:
+    """base_link -> body_link4 for torso joints ``qb`` (xacro body chain)."""
+    m = np.eye(4)
+    for (xyz, rpy), ax, q in zip(BODY_CHAIN, BODY_AXES, qb):
+        m = m @ _tf(xyz, rpy) @ _axis_rot(ax, float(q))
+    return m
+
+
+def arm_frame_in_chassis(qb) -> np.ndarray:
+    """Pose of the arm frame A in the chassis base_link frame (identity at torso zero)."""
+    return torso_transform(qb) @ np.linalg.inv(torso_transform((0.0, 0.0, 0.0, 0.0)))
+
+
+def fk_chassis(side: str, q, qb) -> np.ndarray:
+    """gripper_base pose in the CHASSIS frame for arm joints ``q`` and torso ``qb``."""
+    return arm_frame_in_chassis(qb) @ fk(side, q)

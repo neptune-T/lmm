@@ -34,6 +34,7 @@ from habitat.articulated_agents.mobile_manipulator import (
     MobileManipulatorParams,
 )
 
+from .constants import HOME, NAV_TUCK, REACH_M, TORSO  # noqa: F401  (re-exported)
 from .urdf_kin import URDFKin
 
 SIDES = ("left", "right")
@@ -43,17 +44,12 @@ GRIPPER_MIMICS = {s: tuple(f"{s}_{n}" for n in ("left_inner_joint", "right_inner
                                                  "left_pad_joint", "right_pad_joint")) for s in SIDES}
 EE_LINK = {s: f"{s}_gripper_base" for s in SIDES}
 GRIPPER_OPEN_RAD, GRIPPER_CLOSED_RAD = 0.82, 0.0
-#: gripper_base -> pad midpoint along the approach axis (+z of gripper_base), measured in Isaac.
-REACH_M = 0.1196
-#: Vendor home posture (the xacro's home_2), identical to the Isaac adapter's.
-HOME = {"left": (0.8333, 0.0, 0.0, -1.7800, 0.0, -0.6410, 0.0),
-        "right": (-0.8333, 0.0, 0.0, -1.7800, 0.0, -0.6410, 0.0)}
 #: joint_positions offsets measured on the live runtime (2026-09-29, load_probe.py).
 EXPECTED_POS_OFFSETS = {**{f"left_joint{i}": i - 1 for i in range(1, 8)},
                         **{f"right_joint{i}": 6 + i for i in range(1, 8)},
                         "left_gripper_joint": 14, "right_gripper_joint": 20}
 EXPECTED_MOVABLE = 26
-BASE_LINK_NAMES = {"habitat_base", "base_footprint", "base_link", "driving_wheel_left_link", "driving_wheel_right_link",
+BASE_LINK_NAMES = {"habitat_base", "base_footprint", "base_link", "driving_left_link", "driving_right_link",
                    "driven_fl_link_v", "driven_fl_link_h", "driven_fr_link_v", "driven_fr_link_h",
                    "driven_rl_link_v", "driven_rl_link_h", "driven_rr_link_v", "driven_rr_link_h"}
 #: Camera specs (same physical sensors as in Isaac): parent link, hfov.
@@ -100,7 +96,9 @@ def wrist_optical_in_link8(kin: URDFKin, side: str) -> np.ndarray:
 class AlphaBot2Robot(MobileManipulator):
     """AlphaBot 2 in Habitat: both arms and both grippers always present and controllable."""
 
-    cls_uuid = "alphabot2_robot"
+    #: habitat caches the recomputed navmesh under navmeshes/<scenes>/<cls_uuid>/; the tag lets a
+    #: navmesh-radius audit keep one cache per radius (ALPHABOT2_NAVMESH_TAG, default the class uuid)
+    cls_uuid = __import__("os").environ.get("ALPHABOT2_NAVMESH_TAG", "alphabot2_robot")
 
     def __init__(self, urdf_path, sim, limit_robo_joints=True, fixed_base=True):
         home = np.array(HOME["left"] + HOME["right"], dtype=np.float32)
@@ -191,6 +189,12 @@ class AlphaBot2Robot(MobileManipulator):
     def base_frame(self) -> np.ndarray:
         """World pose of the ROS chassis ``base_link`` frame (x fwd, y left, z up)."""
         return self.link_frame("base_link")
+
+    def arm_frame(self) -> np.ndarray:
+        """World pose of the arm frame A (kinematics / frame B / CartesianExecutor all live in A):
+        base_link composed with the fixed torso posture; equals base_link when the torso is at 0."""
+        from lmm.embodiments.alphabot2 import kinematics as K
+        return self.base_frame() @ K.arm_frame_in_chassis(TORSO)
 
     def _camera_params(self):
         cams = {}

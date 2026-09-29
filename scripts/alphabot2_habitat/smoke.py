@@ -79,7 +79,7 @@ for side_i, side in enumerate(SIDES):
         moved.append({"joint": f"{side}_joint{j + 1}", "delta_cmd": delta, "delta_meas": float(after[idx] - before[idx]),
                       "max_other_change": float(others.max())})
         # FK: Habitat gripper_base in the Habitat base_link frame vs kinematics.fk
-        Tb = np.linalg.inv(rob.base_frame()) @ rob.link_frame(f"{side}_gripper_base")
+        Tb = np.linalg.inv(rob.arm_frame()) @ rob.link_frame(f"{side}_gripper_base")      # arm frame A
         Tk = K.fk(side, after[(0 if side == "left" else 8):(7 if side == "left" else 15)])
         fk_err.append([float(np.linalg.norm(Tb[:3, 3] - Tk[:3, 3])), float(np.linalg.norm(K.rotvec(Tb[:3, :3].T @ Tk[:3, :3])))])
         a[idx] -= delta
