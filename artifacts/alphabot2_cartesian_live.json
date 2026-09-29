@@ -1,0 +1,678 @@
+{
+ "sections": {
+  "reachability_training_workspace": {
+   "ok": true,
+   "left": {
+    "grid_points": 343,
+    "ik_reachable_frac": 0.79,
+    "example_failures": [
+     {
+      "xyz_B": [
+       0.5,
+       0.22,
+       0.7967
+      ],
+      "pos_err_mm": 34.1,
+      "at_limit": [
+       4
+      ]
+     },
+     {
+      "xyz_B": [
+       0.5,
+       0.22,
+       0.84
+      ],
+      "pos_err_mm": 98.7,
+      "at_limit": [
+       4
+      ]
+     },
+     {
+      "xyz_B": [
+       0.5,
+       0.22,
+       0.8833
+      ],
+      "pos_err_mm": 175.6,
+      "at_limit": [
+       4
+      ]
+     },
+     {
+      "xyz_B": [
+       0.5,
+       0.22,
+       0.9267
+      ],
+      "pos_err_mm": 307.5,
+      "at_limit": [
+       2,
+       4,
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.5,
+       0.22,
+       0.97
+      ],
+      "pos_err_mm": 559.7,
+      "at_limit": [
+       1,
+       4,
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.5,
+       0.255,
+       0.7967
+      ],
+      "pos_err_mm": 24.6,
+      "at_limit": [
+       4
+      ]
+     }
+    ],
+    "orientation": "dataset mean quaternion"
+   },
+   "right": {
+    "grid_points": 343,
+    "ik_reachable_frac": 0.577,
+    "example_failures": [
+     {
+      "xyz_B": [
+       0.46,
+       -0.68,
+       0.61
+      ],
+      "pos_err_mm": 89.6,
+      "at_limit": [
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.46,
+       -0.68,
+       0.67
+      ],
+      "pos_err_mm": 63.2,
+      "at_limit": [
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.46,
+       -0.68,
+       0.73
+      ],
+      "pos_err_mm": 40.7,
+      "at_limit": [
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.46,
+       -0.68,
+       0.79
+      ],
+      "pos_err_mm": 17.5,
+      "at_limit": [
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.46,
+       -0.5817,
+       0.61
+      ],
+      "pos_err_mm": 49.3,
+      "at_limit": [
+       7
+      ]
+     },
+     {
+      "xyz_B": [
+       0.46,
+       -0.5817,
+       0.67
+      ],
+      "pos_err_mm": 29.0,
+      "at_limit": [
+       7
+      ]
+     }
+    ],
+    "orientation": "dataset mean quaternion"
+   },
+   "wall_s": 113.58
+  },
+  "synthetic_paths": {
+   "ok": true,
+   "left": [
+    {
+     "path": "+x_B 0.12 m",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0327,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      1.8,
+      1.9
+     ],
+     "track_rot_deg_median_p95": [
+      0.04,
+      0.05
+     ],
+     "final_settled_err": [
+      3.94,
+      0.049
+     ],
+     "commanded_disp_B": [
+      0.116,
+      0.0,
+      0.0
+     ],
+     "achieved_disp_B": [
+      0.1189,
+      0.0001,
+      -0.0006
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "+z_B 0.08 m",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0149,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      4.4,
+      4.4
+     ],
+     "track_rot_deg_median_p95": [
+      0.02,
+      0.03
+     ],
+     "final_settled_err": [
+      3.88,
+      0.031
+     ],
+     "commanded_disp_B": [
+      0.0,
+      0.0,
+      0.0773
+     ],
+     "achieved_disp_B": [
+      0.0014,
+      0.0002,
+      0.0779
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "circle r=0.05 in y-z",
+     "n": 40,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0272,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      5.9,
+      6.6
+     ],
+     "track_rot_deg_median_p95": [
+      0.03,
+      0.04
+     ],
+     "final_settled_err": [
+      3.85,
+      0.025
+     ],
+     "commanded_disp_B": [
+      0.0,
+      -0.0078,
+      -0.0006
+     ],
+     "achieved_disp_B": [
+      0.0014,
+      -0.0048,
+      -0.0006
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "rotate +20 deg about z_B",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0196,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      3.9,
+      3.9
+     ],
+     "track_rot_deg_median_p95": [
+      0.38,
+      0.38
+     ],
+     "final_settled_err": [
+      3.92,
+      0.026
+     ],
+     "commanded_disp_B": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "achieved_disp_B": [
+      0.0011,
+      0.0014,
+      -0.0003
+     ],
+     "self_contacts": []
+    }
+   ],
+   "right": [
+    {
+     "path": "+x_B 0.12 m",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0368,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      1.5,
+      1.5
+     ],
+     "track_rot_deg_median_p95": [
+      0.05,
+      0.06
+     ],
+     "final_settled_err": [
+      3.85,
+      0.057
+     ],
+     "commanded_disp_B": [
+      0.116,
+      0.0,
+      0.0
+     ],
+     "achieved_disp_B": [
+      0.1189,
+      0.0001,
+      -0.0003
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "+z_B 0.08 m",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0151,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      4.0,
+      4.0
+     ],
+     "track_rot_deg_median_p95": [
+      0.03,
+      0.03
+     ],
+     "final_settled_err": [
+      3.77,
+      0.033
+     ],
+     "commanded_disp_B": [
+      0.0,
+      0.0,
+      0.0773
+     ],
+     "achieved_disp_B": [
+      0.0014,
+      0.0,
+      0.0783
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "circle r=0.05 in y-z",
+     "n": 40,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0253,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      5.9,
+      6.0
+     ],
+     "track_rot_deg_median_p95": [
+      0.04,
+      0.05
+     ],
+     "final_settled_err": [
+      3.78,
+      0.031
+     ],
+     "commanded_disp_B": [
+      0.0,
+      -0.0078,
+      -0.0006
+     ],
+     "achieved_disp_B": [
+      0.0014,
+      -0.0049,
+      -0.0003
+     ],
+     "self_contacts": []
+    },
+    {
+     "path": "rotate +20 deg about z_B",
+     "n": 30,
+     "ik_valid_frac": 1.0,
+     "max_joint_step_rad": 0.0182,
+     "discontinuities": 0,
+     "elbow_sign_changes": 0,
+     "track_pos_mm_median_p95": [
+      3.7,
+      3.8
+     ],
+     "track_rot_deg_median_p95": [
+      0.41,
+      0.41
+     ],
+     "final_settled_err": [
+      3.67,
+      0.072
+     ],
+     "commanded_disp_B": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "achieved_disp_B": [
+      0.001,
+      0.0014,
+      -0.0003
+     ],
+     "self_contacts": []
+    }
+   ],
+   "wall_s": 68.33
+  },
+  "dataset_trajectory_replay": {
+   "ok": true,
+   "ep14_task0": {
+    "frames": 148,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 4,
+    "sim_vs_recorded_joints_best_lag_frames": 5,
+    "sim_vs_recorded_joints_median_maxabs_rad": 1.374,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     1.091,
+     0.109,
+     1.283,
+     0.053,
+     0.437,
+     0.148,
+     0.113
+    ],
+    "ee_track_mm_median": 9.4,
+    "right_gripper_cmds": [
+     0.0,
+     0.5,
+     1.0
+    ]
+   },
+   "ep236_task3": {
+    "frames": 81,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 0,
+    "sim_vs_recorded_joints_best_lag_frames": 7,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.05,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.007,
+     0.05,
+     0.044,
+     0.004,
+     0.031,
+     0.043,
+     0.01
+    ],
+    "ee_track_mm_median": 3.8,
+    "right_gripper_cmds": [
+     0.0
+    ]
+   },
+   "ep307_task3": {
+    "frames": 92,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 0,
+    "sim_vs_recorded_joints_best_lag_frames": 8,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.276,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.118,
+     0.113,
+     0.276,
+     0.013,
+     0.182,
+     0.122,
+     0.078
+    ],
+    "ee_track_mm_median": 4.2,
+    "right_gripper_cmds": [
+     0.0,
+     0.8,
+     1.0
+    ]
+   },
+   "ep323_task3": {
+    "frames": 100,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 0,
+    "sim_vs_recorded_joints_best_lag_frames": 7,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.173,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.048,
+     0.104,
+     0.129,
+     0.027,
+     0.173,
+     0.115,
+     0.039
+    ],
+    "ee_track_mm_median": 4.7,
+    "right_gripper_cmds": [
+     0.0,
+     0.8,
+     1.0
+    ]
+   },
+   "ep344_task3": {
+    "frames": 76,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 0,
+    "sim_vs_recorded_joints_best_lag_frames": 7,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.272,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.139,
+     0.095,
+     0.244,
+     0.061,
+     0.21,
+     0.14,
+     0.029
+    ],
+    "ee_track_mm_median": 5.7,
+    "right_gripper_cmds": [
+     0.0,
+     1.0
+    ]
+   },
+   "ep348_task3": {
+    "frames": 84,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 2.3,
+    "discontinuities": 0,
+    "sim_vs_recorded_joints_best_lag_frames": 8,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.2,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.08,
+     0.098,
+     0.186,
+     0.078,
+     0.182,
+     0.081,
+     0.086
+    ],
+    "ee_track_mm_median": 4.6,
+    "right_gripper_cmds": [
+     0.0,
+     0.5,
+     1.0
+    ]
+   },
+   "ep40_task0": {
+    "frames": 111,
+    "right_ik_valid_frac": 0.883,
+    "right_ik_pos_err_mm_p95": 35.3,
+    "discontinuities": 1,
+    "sim_vs_recorded_joints_best_lag_frames": 5,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.167,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.094,
+     0.058,
+     0.165,
+     0.069,
+     0.129,
+     0.039,
+     0.064
+    ],
+    "ee_track_mm_median": 6.8,
+    "right_gripper_cmds": [
+     0.0,
+     1.0
+    ]
+   },
+   "ep52_task1": {
+    "frames": 120,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.5,
+    "discontinuities": 1,
+    "sim_vs_recorded_joints_best_lag_frames": 8,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.826,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.617,
+     0.063,
+     0.826,
+     0.142,
+     0.207,
+     0.083,
+     0.062
+    ],
+    "ee_track_mm_median": 7.3,
+    "right_gripper_cmds": [
+     0.0,
+     1.0
+    ]
+   },
+   "ep5_task0": {
+    "frames": 135,
+    "right_ik_valid_frac": 0.948,
+    "right_ik_pos_err_mm_p95": 3.8,
+    "discontinuities": 3,
+    "sim_vs_recorded_joints_best_lag_frames": 5,
+    "sim_vs_recorded_joints_median_maxabs_rad": 1.869,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     1.268,
+     0.099,
+     1.869,
+     0.053,
+     0.907,
+     0.127,
+     0.342
+    ],
+    "ee_track_mm_median": 7.7,
+    "right_gripper_cmds": [
+     0.0,
+     0.5,
+     1.0
+    ]
+   },
+   "ep62_task1": {
+    "frames": 106,
+    "right_ik_valid_frac": 1.0,
+    "right_ik_pos_err_mm_p95": 0.1,
+    "discontinuities": 1,
+    "sim_vs_recorded_joints_best_lag_frames": 10,
+    "sim_vs_recorded_joints_median_maxabs_rad": 0.183,
+    "sim_vs_recorded_joints_median_per_joint_rad": [
+     0.131,
+     0.084,
+     0.153,
+     0.142,
+     0.158,
+     0.067,
+     0.076
+    ],
+    "ee_track_mm_median": 6.5,
+    "right_gripper_cmds": [
+     0.0,
+     1.0
+    ]
+   },
+   "wall_s": 233.27
+  }
+ },
+ "build": {
+  "nested_leftover_bodies_or_joints": {
+   "Left": [],
+   "Right": []
+  },
+  "deactivated_world_anchors": [
+   "/World/Bot2/Gripper_Left/root_joint",
+   "/World/Bot2/Gripper_Right/root_joint"
+  ],
+  "gripper_base_reattach_err_m": {
+   "Left": 0.0,
+   "Right": 0.0
+  },
+  "right_arm_limit_patch": {
+   "Arm_Right/joints/right_joint3": {
+    "shipped_deg": [
+     -267.6171,
+     87.6167
+    ],
+    "patched_deg": [
+     -87.6169,
+     267.6169
+    ]
+   },
+   "Arm_Right/joints/right_joint5": {
+    "shipped_deg": [
+     -87.6167,
+     267.6171
+    ],
+    "patched_deg": [
+     -267.6169,
+     87.6169
+    ]
+   }
+  }
+ }
+}

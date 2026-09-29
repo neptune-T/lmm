@@ -1,0 +1,169 @@
+{
+ "episodes": [
+  {
+   "tag": "pick_s0_c50",
+   "task": "Pick object from table and put it inside the box",
+   "object": "cube",
+   "seed": 0,
+   "replan_every": 50,
+   "actions": 150,
+   "chunks": 3,
+   "ik_valid_frac_right": 1.0,
+   "ik_valid_frac_left": 1.0,
+   "min_tcp_object_dist_m": 0.22,
+   "object_max_lift_m": 0.0,
+   "grasp_contact_pads": false,
+   "object_in_box_end": false,
+   "object_disp_m": 0.0,
+   "gripper_close_cmds": 0,
+   "right_tcp_path_len_m": null,
+   "median_latency_s": 0.408
+  },
+  {
+   "tag": "pick_s1_c50",
+   "task": "Pick object from table and put it inside the box",
+   "object": "cube",
+   "seed": 1,
+   "replan_every": 50,
+   "actions": 150,
+   "chunks": 3,
+   "ik_valid_frac_right": 1.0,
+   "ik_valid_frac_left": 1.0,
+   "min_tcp_object_dist_m": 0.211,
+   "object_max_lift_m": 0.0,
+   "grasp_contact_pads": false,
+   "object_in_box_end": false,
+   "object_disp_m": 0.0,
+   "gripper_close_cmds": 10,
+   "right_tcp_path_len_m": null,
+   "median_latency_s": 0.405
+  },
+  {
+   "tag": "pick_s0_r10",
+   "task": "Pick object from table and put it inside the box",
+   "object": "cube",
+   "seed": 0,
+   "replan_every": 10,
+   "actions": 150,
+   "chunks": 15,
+   "ik_valid_frac_right": 1.0,
+   "ik_valid_frac_left": 1.0,
+   "min_tcp_object_dist_m": 0.223,
+   "object_max_lift_m": 0.0,
+   "grasp_contact_pads": false,
+   "object_in_box_end": false,
+   "object_disp_m": 0.0,
+   "gripper_close_cmds": 0,
+   "right_tcp_path_len_m": null,
+   "median_latency_s": 0.394
+  },
+  {
+   "tag": "bagtop_s0_c50",
+   "task": "Grab bag from top",
+   "object": "bag",
+   "seed": 0,
+   "replan_every": 50,
+   "actions": 150,
+   "chunks": 3,
+   "ik_valid_frac_right": 1.0,
+   "ik_valid_frac_left": 1.0,
+   "min_tcp_object_dist_m": 0.295,
+   "object_max_lift_m": 0.0,
+   "grasp_contact_pads": false,
+   "object_in_box_end": false,
+   "object_disp_m": 0.0,
+   "gripper_close_cmds": 54,
+   "right_tcp_path_len_m": null,
+   "median_latency_s": 0.382
+  },
+  {
+   "tag": "bagtop_s1_r10",
+   "task": "Grab bag from top",
+   "object": "bag",
+   "seed": 1,
+   "replan_every": 10,
+   "actions": 150,
+   "chunks": 15,
+   "ik_valid_frac_right": 0.96,
+   "ik_valid_frac_left": 1.0,
+   "min_tcp_object_dist_m": 0.328,
+   "object_max_lift_m": 0.0,
+   "grasp_contact_pads": false,
+   "object_in_box_end": false,
+   "object_disp_m": 0.0,
+   "gripper_close_cmds": 3,
+   "right_tcp_path_len_m": null,
+   "median_latency_s": 0.382
+  }
+ ],
+ "server_ping": true,
+ "build": {
+  "nested_leftover_bodies_or_joints": {
+   "Left": [],
+   "Right": []
+  },
+  "deactivated_world_anchors": [
+   "/World/Bot2/Gripper_Left/root_joint",
+   "/World/Bot2/Gripper_Right/root_joint"
+  ],
+  "gripper_base_reattach_err_m": {
+   "Left": 0.0,
+   "Right": 0.0
+  },
+  "right_arm_limit_patch": {
+   "Arm_Right/joints/right_joint3": {
+    "shipped_deg": [
+     -267.6171,
+     87.6167
+    ],
+    "patched_deg": [
+     -87.6169,
+     267.6169
+    ]
+   },
+   "Arm_Right/joints/right_joint5": {
+    "shipped_deg": [
+     -87.6167,
+     267.6171
+    ],
+    "patched_deg": [
+     -267.6169,
+     87.6169
+    ]
+   }
+  }
+ },
+ "cameras": {
+  "cam_front": {
+   "optical_axis_chassis": [
+    0.866,
+    -0.0,
+    -0.5
+   ],
+   "image_right_chassis": [
+    -0.0,
+    -1.0,
+    0.0
+   ]
+  },
+  "cam_chest": {
+   "optical_axis_chassis": [
+    0.9272,
+    -0.0,
+    -0.3746
+   ],
+   "image_right_chassis": [
+    -0.0,
+    -1.0,
+    -0.0
+   ]
+  }
+ },
+ "checkpoint_camera_map": {
+  "camera_front": "cam_chest",
+  "camera_top": "cam_front",
+  "camera_left": "cam_right_wrist",
+  "camera_right": "cam_left_wrist"
+ },
+ "wall_s": 267.2
+}
