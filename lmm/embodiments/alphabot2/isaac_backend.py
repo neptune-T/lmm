@@ -85,8 +85,9 @@ def camera_rows(forward: Any, up: Any) -> np.ndarray:
 # stage construction
 # --------------------------------------------------------------------------
 
-def build_stage(app: Any, stage: Any, robot_usds_root: str) -> dict[str, Any]:
-    """Load Ai2 Bot2 with two Inspire EG2-4C2 grippers at :data:`ROBOT_PRIM`.
+def build_stage(app: Any, stage: Any, robot_usds_root: str, robot_prim: str = ROBOT_PRIM) -> dict[str, Any]:
+    """Load Ai2 Bot2 with two Inspire EG2-4C2 grippers at ``robot_prim``
+    (default :data:`ROBOT_PRIM`; other paths are for multi-robot scenes).
 
     Applies, and reports, three fixes to the public asset:
 
@@ -111,8 +112,8 @@ def build_stage(app: Any, stage: Any, robot_usds_root: str) -> dict[str, Any]:
     report: dict[str, Any] = {}
     bot2 = f"{robot_usds_root}/{BOT2_USD_REL}"
     grip = f"{robot_usds_root}/{GRIPPER_USD_REL}"
-    add_reference_to_stage(usd_path=bot2, prim_path=ROBOT_PRIM)
-    root = stage.GetPrimAtPath(ROBOT_PRIM)
+    add_reference_to_stage(usd_path=bot2, prim_path=robot_prim)
+    root = stage.GetPrimAtPath(robot_prim)
     root.GetVariantSets().GetVariantSet("ROS").SetVariantSelection("none")
     for _ in range(3):
         app.update()
@@ -120,24 +121,24 @@ def build_stage(app: Any, stage: Any, robot_usds_root: str) -> dict[str, Any]:
     xc = UsdGeom.XformCache()
     poses = {}
     for s in SIDES:
-        g = f"{ROBOT_PRIM}/Arm_{s}/link7/link8/tcp/Inspire_EG2_4C2"
+        g = f"{robot_prim}/Arm_{s}/link7/link8/tcp/Inspire_EG2_4C2"
         poses[s] = {"root": xc.GetLocalToWorldTransform(stage.GetPrimAtPath(g)),
                     "base": xc.GetLocalToWorldTransform(stage.GetPrimAtPath(g + "/gripper_base"))}
     for s in SIDES:
-        stage.GetPrimAtPath(f"{ROBOT_PRIM}/Arm_{s}").GetVariantSets().GetVariantSet("EE").SetVariantSelection("None")
+        stage.GetPrimAtPath(f"{robot_prim}/Arm_{s}").GetVariantSets().GetVariantSet("EE").SetVariantSelection("None")
     for _ in range(3):
         app.update()
 
     nested = {}
     for s in SIDES:
-        t = stage.GetPrimAtPath(f"{ROBOT_PRIM}/Arm_{s}/link7/link8/tcp")
+        t = stage.GetPrimAtPath(f"{robot_prim}/Arm_{s}/link7/link8/tcp")
         nested[s] = [str(q.GetPath()) for q in Usd.PrimRange(t, Usd.TraverseInstanceProxies())
                      if q.HasAPI(UsdPhysics.RigidBodyAPI) or q.IsA(UsdPhysics.Joint)] if t else []
     report["nested_leftover_bodies_or_joints"] = nested
 
     anchored = []
     for s in SIDES:
-        path = f"{ROBOT_PRIM}/Gripper_{s}"
+        path = f"{robot_prim}/Gripper_{s}"
         add_reference_to_stage(usd_path=grip, prim_path=path)
         gp = stage.GetPrimAtPath(path)
         gp.GetVariantSets().GetVariantSet("Physics").SetVariantSelection("physx")
@@ -161,10 +162,10 @@ def build_stage(app: Any, stage: Any, robot_usds_root: str) -> dict[str, Any]:
     xc = UsdGeom.XformCache()
     err = {}
     for s in SIDES:
-        link7 = stage.GetPrimAtPath(f"{ROBOT_PRIM}/Arm_{s}/link7")
-        gbase = stage.GetPrimAtPath(f"{ROBOT_PRIM}/Gripper_{s}/gripper_base")
+        link7 = stage.GetPrimAtPath(f"{robot_prim}/Arm_{s}/link7")
+        gbase = stage.GetPrimAtPath(f"{robot_prim}/Gripper_{s}/gripper_base")
         rel = xc.GetLocalToWorldTransform(gbase) * xc.GetLocalToWorldTransform(link7).GetInverse()
-        j = UsdPhysics.FixedJoint.Define(stage, f"{ROBOT_PRIM}/Gripper_{s}/attach_to_link7")
+        j = UsdPhysics.FixedJoint.Define(stage, f"{robot_prim}/Gripper_{s}/attach_to_link7")
         j.CreateBody0Rel().SetTargets([link7.GetPath()])
         j.CreateBody1Rel().SetTargets([gbase.GetPath()])
         j.CreateLocalPos0Attr().Set(Gf.Vec3f(rel.ExtractTranslation()))
@@ -177,7 +178,7 @@ def build_stage(app: Any, stage: Any, robot_usds_root: str) -> dict[str, Any]:
 
     patched = {}
     for dof, (lo, hi) in right_arm_limit_patch().items():
-        p = stage.GetPrimAtPath(f"{ROBOT_PRIM}/{dof}")
+        p = stage.GetPrimAtPath(f"{robot_prim}/{dof}")
         if not p or p.IsInstanceProxy():
             raise RuntimeError(f"cannot patch limits on {dof}: prim missing or an instance proxy")
         j = UsdPhysics.RevoluteJoint(p)
@@ -205,18 +206,33 @@ def enable_contact_reports(stage: Any, root: str = "/World") -> int:
     return n
 
 
-def contact_pairs() -> dict[str, int]:
-    """Current contact pairs as ``"pathA <-> pathB" -> n_contacts``."""
+def contact_pairs(include_lost: bool = False, max_separation_m: float | None = 0.001) -> dict[str, int]:
+    """Current touching pairs as ``"pathA <-> pathB" -> n_contact_points``.
+
+    PhysX reports more than touching pairs, and both kinds are skipped here:
+
+    * CONTACT_LOST events (a pair that just separated, e.g. after a reset or
+      teleport) unless ``include_lost``;
+    * speculative contacts: shapes within the contact offset are reported with a
+      positive separation -- measured 8-19 cm for the gripper vs a large table.
+      Only points with ``separation <= max_separation_m`` count (``None`` keeps all).
+    """
     from omni.physx import get_physx_simulation_interface
     from pxr import PhysicsSchemaTools
 
-    headers, _ = get_physx_simulation_interface().get_contact_report()
+    headers, data = get_physx_simulation_interface().get_contact_report()
     out: dict[str, int] = {}
     for h in headers:
+        if not include_lost and "LOST" in str(h.type).upper():
+            continue
+        pts = data[h.contact_data_offset:h.contact_data_offset + h.num_contact_data]
+        n = sum(1 for c in pts if max_separation_m is None or c.separation <= max_separation_m)
+        if n == 0:
+            continue
         a = str(PhysicsSchemaTools.intToSdfPath(h.actor0))
         b = str(PhysicsSchemaTools.intToSdfPath(h.actor1))
         key = " <-> ".join(sorted((a, b)))
-        out[key] = out.get(key, 0) + int(h.num_contact_data)
+        out[key] = out.get(key, 0) + n
     return out
 
 

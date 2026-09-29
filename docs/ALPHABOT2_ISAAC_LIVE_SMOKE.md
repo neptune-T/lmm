@@ -144,7 +144,12 @@ calibration**. No depth.
 
 RGB order was confirmed with pure red/green/blue markers. All three cameras
 report the same `rendering_frame`/`rendering_time` (synchronised; one frame per
-action). The RTX frames show residual denoiser streaking; the content is
+action).
+
+> **Later finding (pilot data collection, 2026-09-29):** cross-camera sync
+> holds, but the annotators deliver the *previous* render, so an image read
+> before an action shows the state one action old. Recording must read images
+> after the next action. See `ALPHABOT2_PI05_BOOTSTRAP.md` §7. The RTX frames show residual denoiser streaking; the content is
 legible. With 3 cameras a policy step costs 0.26 s wall-clock.
 
 The wrist views appear rolled about 90° at the vendor home pose because the
@@ -158,7 +163,8 @@ rehearsed live without the object (no self-contacts; pad midpoint 7 mm from
 the planned point, fingers separating horizontally, approach straight down). A 5 cm, 50 g cube on a pedestal: descend 8 cm, close, lift
 8 cm, drive the base backwards while turning.
 * Closed pad separation 0.0617 m (vs 0.036 m empty), so the fingers were
-  stopped by the cube; 7 gripper bodies in contact with it.
+  stopped by the cube (7 gripper bodies reported in contact; that count predates
+  the speculative-contact fix below, the grasp itself is shown by the lift).
 * The cube rose 0.0824 m with the 0.08 m lift. It was still in contact after
   the base travelled 0.146 m.
 * Snapshot/restore: see [`ALPHABOT2_SNAPSHOT_RESTORE_AUDIT.md`](ALPHABOT2_SNAPSHOT_RESTORE_AUDIT.md).
@@ -176,10 +182,18 @@ obstacles sit off the route, plus the manipulation props.
   there is no planner.
 
 **Earlier attempt, reported rather than hidden:** a previous run placed an
-obstacle inside the final leg's swept path. The robot drove into it and the
-contact report flagged it (chassis `base_footprint`, a caster and
-`body_link1`). The route was fine; my obstacle layout was wrong and has been
-moved.
+obstacle inside the final leg's swept path, and the contact report flagged it
+(chassis `base_footprint`, a caster and `body_link1`). The obstacle was moved.
+
+> **Correction (found later the same day, during pilot data collection).**
+> `isaac_backend.contact_pairs()` then counted every PhysX contact header,
+> including CONTACT_LOST events and **speculative** contacts (shapes within the
+> contact offset, reported with positive separation — measured up to 8–19 cm
+> for large boxes). It now counts only points with separation ≤ 1 mm. The
+> helper can only have *over*-reported, so every "no contact" result above
+> stands (no self-contacts, collision-free route). The flagged earlier
+> obstacle hit is **not established as a physical collision**: it may have been
+> a near miss inside the contact offset.
 
 ## 10. Reset reproducibility and timing
 

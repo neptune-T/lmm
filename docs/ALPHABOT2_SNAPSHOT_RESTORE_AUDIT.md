@@ -33,7 +33,9 @@ covered by the DOF rows.
 ## Results (grasp in contact + base motion, 25 actions = 2.5 s after the snapshot)
 
 The snapshot was taken mid-lift. At that point the cube had risen 3.1 cm and 7
-gripper bodies were in contact with it. Over the next 25 actions the arm
+gripper bodies were reported in contact with it (a count from the contact helper
+before it learned to ignore speculative contacts; the grasp itself is shown by
+the measured lift). Over the next 25 actions the arm
 finished the lift (cube +8.2 cm in total) and the base travelled 0.146 m while
 still holding the cube.
 
