@@ -1,0 +1,187 @@
+{
+ "kind": "full",
+ "arm": "left",
+ "instruction": "Use the left arm to pick up the red cube and put it in the blue box.",
+ "init": {
+  "base_xy": [
+   -0.1605325931622819,
+   0.06995658285757728
+  ],
+  "base_yaw": -0.02945843897086342,
+  "object_xy": [
+   1.4222300316264829,
+   -0.0348198397656837
+  ]
+ },
+ "task_id": "full_left",
+ "episode_id": 0,
+ "fps": 10,
+ "steps": 379,
+ "events": [
+  [
+   0,
+   "navigate_to_object"
+  ],
+  [
+   93,
+   "reach"
+  ],
+  [
+   118,
+   "descend"
+  ],
+  [
+   128,
+   "grasp"
+  ],
+  [
+   138,
+   "lift"
+  ],
+  [
+   151,
+   "back_off"
+  ],
+  [
+   168,
+   "navigate_to_box"
+  ],
+  [
+   293,
+   "reach_box"
+  ],
+  [
+   313,
+   "lower"
+  ],
+  [
+   321,
+   "release"
+  ],
+  [
+   331,
+   "retract"
+  ],
+  [
+   366,
+   "back_off"
+  ],
+  [
+   379,
+   "done"
+  ]
+ ],
+ "stages": [
+  "init",
+  "navigate_to_object",
+  "reach",
+  "descend",
+  "grasp",
+  "lift",
+  "back_off",
+  "navigate_to_box",
+  "reach_box",
+  "lower",
+  "release",
+  "retract",
+  "done"
+ ],
+ "action_space": "CartesianMobileAction18",
+ "action_labels": [
+  "left_arm.x",
+  "left_arm.y",
+  "left_arm.z",
+  "left_arm.qx",
+  "left_arm.qy",
+  "left_arm.qz",
+  "left_arm.qw",
+  "right_arm.x",
+  "right_arm.y",
+  "right_arm.z",
+  "right_arm.qx",
+  "right_arm.qy",
+  "right_arm.qz",
+  "right_arm.qw",
+  "left_gripper.pos",
+  "right_gripper.pos",
+  "base.v",
+  "base.omega"
+ ],
+ "proprio": "canonical 16-D (vendor joints, closed fractions)",
+ "cameras": [
+  "cam_front",
+  "cam_left_wrist",
+  "cam_right_wrist",
+  "cam_chest"
+ ],
+ "policy_inputs": [
+  "cam_front",
+  "cam_left_wrist",
+  "cam_right_wrist",
+  "proprio",
+  "instruction"
+ ],
+ "metadata_only": [
+  "stage_id",
+  "events",
+  "obj_pose",
+  "chassis",
+  "grasp",
+  "sim_time",
+  "success"
+ ],
+ "ik_invalid_steps": 2,
+ "expert_ik": [
+  {
+   "what": "pre_grasp",
+   "side": "left",
+   "pos_err_mm": 0.0,
+   "rot_err_deg": 0.0,
+   "at_limit": []
+  },
+  {
+   "what": "close",
+   "side": "left",
+   "steps": 8,
+   "closed_fraction": 0.818
+  },
+  {
+   "what": "line [0.0, 0.0, 0.1]",
+   "side": "left",
+   "worst_pos_err_mm": 4.84
+  },
+  {
+   "what": "place_above",
+   "side": "left",
+   "pos_err_mm": 0.0,
+   "rot_err_deg": 0.0,
+   "at_limit": []
+  },
+  {
+   "what": "line [0.0, 0.0, 0.12]",
+   "side": "left",
+   "worst_pos_err_mm": 12.35
+  }
+ ],
+ "arrival": {
+  "object_in_chassis": [
+   0.4567,
+   0.2353,
+   0.6945
+  ],
+  "box_in_chassis": [
+   0.4578,
+   0.2608,
+   0.6795
+  ]
+ },
+ "success": true,
+ "object_final": [
+  -0.0019,
+  1.5606,
+  0.705
+ ],
+ "object_in_box": true,
+ "object_lifted_and_held": false,
+ "wall_s": 130.7
+}

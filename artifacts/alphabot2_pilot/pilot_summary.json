@@ -1,0 +1,684 @@
+{
+ "episodes": [
+  {
+   "episode": 0,
+   "kind": "full",
+   "arm": "left",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep000",
+   "arrival": {
+    "object_in_chassis": [
+     0.4567,
+     0.2353,
+     0.6945
+    ],
+    "box_in_chassis": [
+     0.4578,
+     0.2608,
+     0.6795
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "left",
+     "steps": 8,
+     "closed_fraction": 0.818
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "left",
+     "worst_pos_err_mm": 4.84
+    },
+    {
+     "what": "place_above",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "line [0.0, 0.0, 0.12]",
+     "side": "left",
+     "worst_pos_err_mm": 12.35
+    }
+   ],
+   "success": true,
+   "object_final": [
+    -0.0019,
+    1.5606,
+    0.705
+   ],
+   "object_in_box": true,
+   "object_lifted_and_held": false,
+   "wall_s": 130.7,
+   "steps": 379
+  },
+  {
+   "episode": 1,
+   "kind": "full",
+   "arm": "right",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep001",
+   "arrival": {
+    "object_in_chassis": [
+     0.4568,
+     -0.2496,
+     0.6945
+    ],
+    "box_in_chassis": [
+     0.459,
+     -0.235,
+     0.6795
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "right",
+     "steps": 8,
+     "closed_fraction": 0.816
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "right",
+     "worst_pos_err_mm": 4.58
+    },
+    {
+     "what": "place_above",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "line [0.0, 0.0, 0.12]",
+     "side": "right",
+     "worst_pos_err_mm": 15.1
+    }
+   ],
+   "success": true,
+   "object_final": [
+    0.0004,
+    1.6172,
+    0.705
+   ],
+   "object_in_box": true,
+   "object_lifted_and_held": false,
+   "wall_s": 128.5,
+   "steps": 380
+  },
+  {
+   "episode": 2,
+   "kind": "pick",
+   "arm": "left",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep002",
+   "arrival": {
+    "object_in_chassis": [
+     0.459,
+     0.2319,
+     0.6945
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "left",
+     "steps": 8,
+     "closed_fraction": 0.822
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "left",
+     "worst_pos_err_mm": 4.75
+    }
+   ],
+   "success": true,
+   "object_final": [
+    1.1975,
+    0.0068,
+    0.7984
+   ],
+   "object_in_box": false,
+   "object_lifted_and_held": true,
+   "wall_s": 60.0,
+   "steps": 178
+  },
+  {
+   "episode": 3,
+   "kind": "pick",
+   "arm": "right",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep003",
+   "arrival": {
+    "object_in_chassis": [
+     0.4565,
+     -0.2337,
+     0.6945
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "right",
+     "steps": 8,
+     "closed_fraction": 0.819
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "right",
+     "worst_pos_err_mm": 4.86
+    }
+   ],
+   "success": true,
+   "object_final": [
+    1.1686,
+    -0.0647,
+    0.7966
+   ],
+   "object_in_box": false,
+   "object_lifted_and_held": true,
+   "wall_s": 55.6,
+   "steps": 163
+  },
+  {
+   "episode": 4,
+   "kind": "full",
+   "arm": "left",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep004",
+   "arrival": {
+    "object_in_chassis": [
+     0.4571,
+     0.2317,
+     0.6945
+    ],
+    "box_in_chassis": [
+     0.4574,
+     0.2564,
+     0.6795
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "left",
+     "steps": 8,
+     "closed_fraction": 0.818
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "left",
+     "worst_pos_err_mm": 4.85
+    },
+    {
+     "what": "place_above",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "line [0.0, 0.0, 0.12]",
+     "side": "left",
+     "worst_pos_err_mm": 12.95
+    }
+   ],
+   "success": true,
+   "object_final": [
+    -0.0093,
+    1.564,
+    0.7128
+   ],
+   "object_in_box": true,
+   "object_lifted_and_held": false,
+   "wall_s": 125.6,
+   "steps": 375
+  },
+  {
+   "episode": 5,
+   "kind": "full",
+   "arm": "right",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep005",
+   "arrival": {
+    "object_in_chassis": [
+     0.4572,
+     -0.2311,
+     0.6945
+    ],
+    "box_in_chassis": [
+     0.456,
+     -0.2268,
+     0.6795
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "right",
+     "steps": 8,
+     "closed_fraction": 0.817
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "right",
+     "worst_pos_err_mm": 4.85
+    },
+    {
+     "what": "place_above",
+     "side": "right",
+     "pos_err_mm": 0.01,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "line [0.0, 0.0, 0.12]",
+     "side": "right",
+     "worst_pos_err_mm": 15.82
+    }
+   ],
+   "success": true,
+   "object_final": [
+    0.0,
+    1.6011,
+    0.705
+   ],
+   "object_in_box": true,
+   "object_lifted_and_held": false,
+   "wall_s": 132.8,
+   "steps": 400
+  },
+  {
+   "episode": 6,
+   "kind": "pick",
+   "arm": "left",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep006",
+   "arrival": {
+    "object_in_chassis": [
+     0.4569,
+     0.2313,
+     0.6945
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "left",
+     "steps": 8,
+     "closed_fraction": 0.82
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "left",
+     "worst_pos_err_mm": 4.86
+    }
+   ],
+   "success": true,
+   "object_final": [
+    1.1906,
+    -0.0359,
+    0.7985
+   ],
+   "object_in_box": false,
+   "object_lifted_and_held": true,
+   "wall_s": 58.7,
+   "steps": 179
+  },
+  {
+   "episode": 7,
+   "kind": "pick",
+   "arm": "right",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep007",
+   "arrival": {
+    "object_in_chassis": [
+     0.4568,
+     -0.232,
+     0.6945
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "right",
+     "steps": 8,
+     "closed_fraction": 0.814
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "right",
+     "worst_pos_err_mm": 4.86
+    }
+   ],
+   "success": true,
+   "object_final": [
+    1.2039,
+    -0.0445,
+    0.7967
+   ],
+   "object_in_box": false,
+   "object_lifted_and_held": true,
+   "wall_s": 52.7,
+   "steps": 158
+  },
+  {
+   "episode": 8,
+   "kind": "full",
+   "arm": "right",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep008",
+   "arrival": {
+    "object_in_chassis": [
+     0.4563,
+     -0.2343,
+     0.6945
+    ],
+    "box_in_chassis": [
+     0.4555,
+     -0.2328,
+     0.6795
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "right",
+     "steps": 9,
+     "closed_fraction": 0.811
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "right",
+     "worst_pos_err_mm": 4.87
+    },
+    {
+     "what": "place_above",
+     "side": "right",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "line [0.0, 0.0, 0.12]",
+     "side": "right",
+     "worst_pos_err_mm": 15.42
+    }
+   ],
+   "success": true,
+   "object_final": [
+    -0.0006,
+    1.6429,
+    0.705
+   ],
+   "object_in_box": true,
+   "object_lifted_and_held": false,
+   "wall_s": 133.5,
+   "steps": 401
+  },
+  {
+   "episode": 9,
+   "kind": "pick",
+   "arm": "left",
+   "dir": "/nix/yanjun/zts/alphabot2/pilot/ep009",
+   "arrival": {
+    "object_in_chassis": [
+     0.4565,
+     0.2394,
+     0.6945
+    ]
+   },
+   "expert_ik": [
+    {
+     "what": "pre_grasp",
+     "side": "left",
+     "pos_err_mm": 0.0,
+     "rot_err_deg": 0.0,
+     "at_limit": []
+    },
+    {
+     "what": "close",
+     "side": "left",
+     "steps": 8,
+     "closed_fraction": 0.816
+    },
+    {
+     "what": "line [0.0, 0.0, 0.1]",
+     "side": "left",
+     "worst_pos_err_mm": 4.8
+    }
+   ],
+   "success": true,
+   "object_final": [
+    1.1992,
+    0.0137,
+    0.7986
+   ],
+   "object_in_box": false,
+   "object_lifted_and_held": true,
+   "wall_s": 52.4,
+   "steps": 159
+  }
+ ],
+ "replays": [
+  {
+   "episode": 0,
+   "replay_success": true,
+   "steps": 379,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 124.5
+  },
+  {
+   "episode": 1,
+   "replay_success": true,
+   "steps": 380,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 124.9
+  },
+  {
+   "episode": 2,
+   "replay_success": true,
+   "steps": 178,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 59.4
+  },
+  {
+   "episode": 3,
+   "replay_success": true,
+   "steps": 163,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 54.2
+  },
+  {
+   "episode": 4,
+   "replay_success": true,
+   "steps": 375,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 123.8
+  },
+  {
+   "episode": 5,
+   "replay_success": true,
+   "steps": 400,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 131.2
+  },
+  {
+   "episode": 6,
+   "replay_success": true,
+   "steps": 179,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 58.6
+  },
+  {
+   "episode": 7,
+   "replay_success": true,
+   "steps": 158,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 52.7
+  },
+  {
+   "episode": 8,
+   "replay_success": true,
+   "steps": 401,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 129.6
+  },
+  {
+   "episode": 9,
+   "replay_success": true,
+   "steps": 159,
+   "proprio_max_abs_diff": 0.0,
+   "object_pos_max_diff_m": 0.0,
+   "object_final_diff_m": 0.0,
+   "bitwise_identical_proprio": true,
+   "wall_s": 52.1
+  }
+ ],
+ "build": {
+  "nested_leftover_bodies_or_joints": {
+   "Left": [],
+   "Right": []
+  },
+  "deactivated_world_anchors": [
+   "/World/Bot2/Gripper_Left/root_joint",
+   "/World/Bot2/Gripper_Right/root_joint"
+  ],
+  "gripper_base_reattach_err_m": {
+   "Left": 0.0,
+   "Right": 0.0
+  },
+  "right_arm_limit_patch": {
+   "Arm_Right/joints/right_joint3": {
+    "shipped_deg": [
+     -267.6171,
+     87.6167
+    ],
+    "patched_deg": [
+     -87.6169,
+     267.6169
+    ]
+   },
+   "Arm_Right/joints/right_joint5": {
+    "shipped_deg": [
+     -87.6167,
+     267.6171
+    ],
+    "patched_deg": [
+     -267.6169,
+     87.6169
+    ]
+   }
+  }
+ },
+ "pregrasp_seed_left": {
+  "q": [
+   -0.1038,
+   0.0591,
+   0.0155,
+   -1.0436,
+   -0.0242,
+   1.1302,
+   -0.0384
+  ],
+  "converged": true,
+  "pos_err_mm": 0.01
+ },
+ "pregrasp_seed_right": {
+  "q": [
+   0.1038,
+   0.0591,
+   0.0155,
+   -1.0436,
+   -0.0242,
+   1.1302,
+   -0.0384
+  ],
+  "converged": true,
+  "pos_err_mm": 0.01
+ },
+ "record_wall_s": 1032.1
+}

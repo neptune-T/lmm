@@ -1,0 +1,146 @@
+{
+ "kind": "pick",
+ "arm": "left",
+ "instruction": "Use the left arm to pick up the red cube.",
+ "init": {
+  "base_xy": [
+   -0.14529193938189022,
+   0.18731202859608975
+  ],
+  "base_yaw": 0.2677160839692894,
+  "object_xy": [
+   1.4364025806010987,
+   -0.037175861119849885
+  ]
+ },
+ "task_id": "pick_left",
+ "episode_id": 6,
+ "fps": 10,
+ "steps": 179,
+ "events": [
+  [
+   0,
+   "navigate_to_object"
+  ],
+  [
+   104,
+   "reach"
+  ],
+  [
+   129,
+   "descend"
+  ],
+  [
+   139,
+   "grasp"
+  ],
+  [
+   149,
+   "lift"
+  ],
+  [
+   162,
+   "back_off"
+  ],
+  [
+   179,
+   "done"
+  ]
+ ],
+ "stages": [
+  "init",
+  "navigate_to_object",
+  "reach",
+  "descend",
+  "grasp",
+  "lift",
+  "back_off",
+  "navigate_to_box",
+  "reach_box",
+  "lower",
+  "release",
+  "retract",
+  "done"
+ ],
+ "action_space": "CartesianMobileAction18",
+ "action_labels": [
+  "left_arm.x",
+  "left_arm.y",
+  "left_arm.z",
+  "left_arm.qx",
+  "left_arm.qy",
+  "left_arm.qz",
+  "left_arm.qw",
+  "right_arm.x",
+  "right_arm.y",
+  "right_arm.z",
+  "right_arm.qx",
+  "right_arm.qy",
+  "right_arm.qz",
+  "right_arm.qw",
+  "left_gripper.pos",
+  "right_gripper.pos",
+  "base.v",
+  "base.omega"
+ ],
+ "proprio": "canonical 16-D (vendor joints, closed fractions)",
+ "cameras": [
+  "cam_front",
+  "cam_left_wrist",
+  "cam_right_wrist",
+  "cam_chest"
+ ],
+ "policy_inputs": [
+  "cam_front",
+  "cam_left_wrist",
+  "cam_right_wrist",
+  "proprio",
+  "instruction"
+ ],
+ "metadata_only": [
+  "stage_id",
+  "events",
+  "obj_pose",
+  "chassis",
+  "grasp",
+  "sim_time",
+  "success"
+ ],
+ "ik_invalid_steps": 0,
+ "expert_ik": [
+  {
+   "what": "pre_grasp",
+   "side": "left",
+   "pos_err_mm": 0.0,
+   "rot_err_deg": 0.0,
+   "at_limit": []
+  },
+  {
+   "what": "close",
+   "side": "left",
+   "steps": 8,
+   "closed_fraction": 0.82
+  },
+  {
+   "what": "line [0.0, 0.0, 0.1]",
+   "side": "left",
+   "worst_pos_err_mm": 4.86
+  }
+ ],
+ "arrival": {
+  "object_in_chassis": [
+   0.4569,
+   0.2313,
+   0.6945
+  ]
+ },
+ "success": true,
+ "object_final": [
+  1.1906,
+  -0.0359,
+  0.7985
+ ],
+ "object_in_box": false,
+ "object_lifted_and_held": true,
+ "wall_s": 58.7
+}
