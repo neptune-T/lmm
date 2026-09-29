@@ -1,0 +1,240 @@
+{
+ "sources": {
+  "robot_descriptions": "bd491829961a8562306515001103af3b3737fbc7",
+  "robot-descriptions-common": "92fa1ebf7b7b6a36f8e277dda48706903e57101d"
+ },
+ "xacro": "ai2_bot2_description/xacro/robot.xacro type:=inspire",
+ "packages": {
+  "ai2_bot2_description": "/nix/yanjun/zts/alphabot2/deps/robot_descriptions/humanoid/Ai2Robotics/ai2_bot2_description",
+  "aidal_description": "/nix/yanjun/zts/alphabot2/deps/robot_descriptions/humanoid/Realman/aidal_description",
+  "rm75_description": "/nix/yanjun/zts/alphabot2/deps/robot_descriptions/manipulator/Realman/rm75_description",
+  "inspire_description": "/nix/yanjun/zts/alphabot2/deps/rd_common/gripper/inspire_description",
+  "sensor_models": "/nix/yanjun/zts/alphabot2/deps/rd_common/sensor_models"
+ },
+ "removed_tags": {
+  "ros2_control": 0,
+  "gazebo": 0,
+  "transmission": 0
+ },
+ "frozen_joints": {
+  "body_joint1": {
+   "type": "revolute",
+   "rpy": [
+    -1.5708,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.0
+  },
+  "body_joint2": {
+   "type": "revolute",
+   "rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.0
+  },
+  "body_joint3": {
+   "type": "revolute",
+   "rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.0
+  },
+  "body_joint4": {
+   "type": "revolute",
+   "rpy": [
+    1.5708,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.0
+  },
+  "head_joint1": {
+   "type": "revolute",
+   "rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.0
+  },
+  "head_joint2": {
+   "type": "revolute",
+   "rpy": [
+    -1.5708,
+    0.0,
+    0.0
+   ],
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "q": 0.2
+  }
+ },
+ "meshes": {
+  "meshes/ai2_bot2_description/meshes/Visual/chassis/chassis.glb": "2dd1acf6a2fecf86",
+  "meshes/ai2_bot2_description/meshes/Visual/chassis/driven_v.glb": "1bdd732860d6adfb",
+  "meshes/ai2_bot2_description/meshes/Visual/chassis/driven_h.glb": "2b3b025f5dd6a2ae",
+  "meshes/aidal_description/meshes/woosh_agv/wheel.glb": "64e86435404f8527",
+  "meshes/aidal_description/meshes/woosh_agv/panel.glb": "29169e11a51ebb80",
+  "meshes/ai2_bot2_description/meshes/Visual/chassis/charge_port.glb": "7ab1bd2040113265",
+  "meshes/sensor_models/meshes/orbbec/ms500.glb": "8714f0320ff8a080",
+  "meshes/sensor_models/meshes/orbbec/Dabai_DW.glb": "1975a2b429c6c587",
+  "meshes/ai2_bot2_description/meshes/Visual/body/link1.glb": "b8e79d45211c9d5c",
+  "meshes/ai2_bot2_description/meshes/Visual/body/link2.glb": "8f5ffa302888ae8a",
+  "meshes/ai2_bot2_description/meshes/Visual/body/link3.glb": "75fe2a9585e2ea5a",
+  "meshes/ai2_bot2_description/meshes/Visual/body/link4.glb": "41ae4ab0bd98887e",
+  "meshes/sensor_models/meshes/realsense/d435.glb": "7b1e3725fda58928",
+  "meshes/ai2_bot2_description/meshes/Visual/body/head2.glb": "2aadb03dd368c890",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/arm_base_link.glb": "3378926c149f74b2",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link1.glb": "dbf9978b8b5d40a1",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link2.glb": "316759fcdd24b70d",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link3.glb": "f43827793b874ee6",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link4.glb": "6104aedaee68c5c7",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link5.glb": "c71aa76254cc14aa",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link6.glb": "a78f1cc18734a3a9",
+  "meshes/ai2_bot2_description/meshes/Visual/arm/link7.glb": "3a574396c9fbaf72",
+  "meshes/rm75_description/meshes/ee/camera_stand_d405.glb": "1edef903233f3970",
+  "meshes/rm75_description/meshes/ee/ee_fb_camera.glb": "d343572e15506fac",
+  "meshes/sensor_models/meshes/realsense/d405.glb": "2de628d1b226845a",
+  "meshes/inspire_description/meshes/EG2-4C2/baselink.obj": "cda42312da9664cb",
+  "meshes/inspire_description/meshes/EG2-4C2/outer_link.obj": "71653718ead01203",
+  "meshes/inspire_description/meshes/EG2-4C2/inner_link.obj": "dd5245be19918d42",
+  "meshes/inspire_description/meshes/EG2-4C2/pad.obj": "59cedbe2e28c87a6"
+ },
+ "head_posture": {
+  "head_joint1": 0.0,
+  "head_joint2": 0.2
+ },
+ "habitat_root": {
+  "new_root": "habitat_base",
+  "ros_root": "base_footprint",
+  "joint": "habitat_yup_joint",
+  "rpy": [
+   -1.5707963267948966,
+   0,
+   0
+  ]
+ },
+ "counts": {
+  "links": 64,
+  "joints": {
+   "fixed": 37,
+   "revolute": 26
+  },
+  "collision_elements": 42,
+  "visual_elements": 59
+ },
+ "movable_joints": [
+  "left_joint1",
+  "left_joint2",
+  "left_joint3",
+  "left_joint4",
+  "left_joint5",
+  "left_joint6",
+  "left_joint7",
+  "right_joint1",
+  "right_joint2",
+  "right_joint3",
+  "right_joint4",
+  "right_joint5",
+  "right_joint6",
+  "right_joint7",
+  "left_gripper_joint",
+  "left_left_inner_joint",
+  "left_right_inner_joint",
+  "left_right_outer_joint",
+  "left_left_pad_joint",
+  "left_right_pad_joint",
+  "right_gripper_joint",
+  "right_left_inner_joint",
+  "right_right_inner_joint",
+  "right_right_outer_joint",
+  "right_left_pad_joint",
+  "right_right_pad_joint"
+ ],
+ "mimic": {
+  "left_left_inner_joint": {
+   "joint": "left_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "left_right_inner_joint": {
+   "joint": "left_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "left_right_outer_joint": {
+   "joint": "left_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "left_left_pad_joint": {
+   "joint": "left_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "left_right_pad_joint": {
+   "joint": "left_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "right_left_inner_joint": {
+   "joint": "right_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "right_right_inner_joint": {
+   "joint": "right_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "right_right_outer_joint": {
+   "joint": "right_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "right_left_pad_joint": {
+   "joint": "right_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  },
+  "right_right_pad_joint": {
+   "joint": "right_gripper_joint",
+   "multiplier": 1.0,
+   "offset": 0.0
+  }
+ },
+ "urdf_sha256": "0a4f071772fdfdfe47517989bb482a47069adecb647c5d33c7934e111cd4945e"
+}

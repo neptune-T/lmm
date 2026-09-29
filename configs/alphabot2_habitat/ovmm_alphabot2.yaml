@@ -1,0 +1,56 @@
+# @package _global_
+#
+# OVMM tasks/scenes with an AlphaBot 2 dual-arm mobile embodiment.
+# Overlay on benchmark/ovmm/ovmm.yaml (install next to it; see install_overlay.sh).
+# Changes the embodiment only: OVMM episodes, HSSD scenes, objects/receptacles,
+# task logic and every OVMM measurement are inherited unchanged. Removed by
+# the launcher (Hydra deletes, they are Stretch-specific): task.actions.arm_action,
+# task.actions.base_velocity, task.lab_sensors.joint_sensor, joint_velocity_sensor.
+defaults:
+  - ovmm
+  - /habitat/simulator/sim_sensors@habitat.simulator.agents.main_agent.sim_sensors.left_wrist_rgb_sensor: left_wrist_rgb_sensor
+  - /habitat/simulator/sim_sensors@habitat.simulator.agents.main_agent.sim_sensors.right_wrist_rgb_sensor: right_wrist_rgb_sensor
+  - _self_
+
+habitat:
+  gym:
+    obs_keys:
+      - head_rgb
+      - head_depth
+      - left_wrist_rgb
+      - right_wrist_rgb
+      - alphabot2_proprio
+      - object_category
+      - start_receptacle
+      - goal_receptacle
+      - is_holding
+  simulator:
+    # one env.step == one 10 Hz policy action == 20 physics substeps x 0.005 s = 0.1 s EXACTLY:
+    # RearrangeSim.step runs ac_freq_ratio (19) substeps and EmbodiedTask.step always adds
+    # step_physics(1 / task.physics_target_sps) = one more 0.005 s substep (at habitat's default
+    # 60 Hz it added 3-4, measured 0.115-0.120 s per action).
+    ctrl_freq: 200.0
+    ac_freq_ratio: 19
+    agents:
+      main_agent:
+        articulated_agent_urdf: /nix/yanjun/zts/alphabot2/habitat_assets/alphabot2/alphabot2.urdf
+        articulated_agent_type: AlphaBot2Robot
+        grasp_managers: 2        # manager 0 = left hand, 1 = right hand
+        radius: 0.3              # navmesh agent radius; set by the footprint audit
+        height: 1.7
+        sim_sensors:
+          head_rgb_sensor: {height: 240, width: 320, hfov: 69}
+          head_depth_sensor: {height: 240, width: 320, hfov: 69}
+          head_panoptic_sensor: {height: 240, width: 320, hfov: 69}
+          left_wrist_rgb_sensor: {height: 240, width: 320, hfov: 87}
+          right_wrist_rgb_sensor: {height: 240, width: 320, hfov: 87}
+    habitat_sim_v0:
+      physics_config_file: /nix/yanjun/zts/alphabot2/habitat_assets/alphabot2.physics_config.json
+  task:
+    physics_target_sps: 200.0
+    actions:
+      alphabot2_action:
+        type: AlphaBot2JointMobileAction
+    lab_sensors:
+      alphabot2_proprio:
+        type: AlphaBot2ProprioSensor
