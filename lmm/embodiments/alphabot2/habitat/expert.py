@@ -41,6 +41,11 @@ PAD_MID_GB = np.array([0.0, -0.006, 0.1196])     # pad midpoint in gripper_base 
 #: through the support (measured: 22-33 gripper-support contact steps per pinch), so it is not a
 #: physically valid grasp; flat objects wider than the aperture are an EG2-4C2 limitation.
 ENABLE_RIM_PINCH = False
+#: standoff candidates (ranked by geodesic distance) that get an IK check
+IK_CANDIDATES = 12
+#: base-to-object distance window: arm frame A is 0.104 m behind the chassis, the crouched arm reaches
+#: grasp points ~0.35-0.75 m ahead in A -> 0.25-0.64 m from the base centre
+R_MIN, R_MAX = 0.25, 0.64
 #: fingertips reach 2.85 cm past the pad midpoint along the approach (xacro meshes, measured);
 #: the pad midpoint is kept this far (x cos tilt) + 6 mm above the supporting surface
 FINGERTIP_BEYOND_PAD_MID_M = 0.0285
@@ -192,7 +197,7 @@ class OVMMExpert:
             c = expert.cart_now()
             c[16], c[17] = v, w
             return expert.step(c)
-        st = NAV.follow_with(self.env, goal_xyz, step_vw, face_xz=face_xz, arrive_m=0.04)
+        st = NAV.follow_with(self.env, goal_xyz, step_vw, face_xz=face_xz, arrive_m=0.02)
         return st
 
     # ------------------------------------------------------------------ planning
@@ -222,16 +227,19 @@ class OVMMExpert:
         floor_y = float(start[1])
         tgt = mn.Vector3(float(target_hab[0]), floor_y, float(target_hab[2]))
         sgn = 1.0 if side == "left" else -1.0
-        out, seen = [], set()
+        out, seen, misses = [], set(), 0
         pf.seed(int(self.rng.integers(1 << 30)))
         for _ in range(n):
-            p = pf.get_random_navigable_point_near(tgt, 0.85, 50, island)
+            p = pf.get_random_navigable_point_near(tgt, R_MAX, 20, island)
             p = np.array(p)
             if not np.isfinite(p).all():
+                misses += 1
+                if misses >= 8 and not out:          # nothing navigable around the target on this island
+                    break
                 continue
             d = np.array([target_hab[0] - p[0], target_hab[2] - p[2]])
             r = float(np.linalg.norm(d))
-            if r < 0.30 or r > 0.85:
+            if r < R_MIN or r > R_MAX:                    # object within the crouched arm's forward reach
                 continue
             key = (round(p[0], 2), round(p[2], 2))
             if key in seen:
@@ -288,14 +296,20 @@ class OVMMExpert:
                         out.append({"mode": "rim", "tilt": down, "R": R, "pad": pad, "width": thick})
         return out
 
-    def feasible_grasp(self, side, cands):
+    def feasible_grasp(self, side, cands, robust=0.0):
+        """First grasp option whose grasp and pre-grasp are IK-feasible; with ``robust`` > 0 the grasp
+        must also stay feasible with the object shifted by +-robust in x and y (base arrival error)."""
         for g in cands:
             rg, okg = self.ik_ok(side, self.pose(g["R"], g["pad"]))
             if not okg:
                 continue
             rp, okp = self.ik_ok(side, self.pose(g["R"], g["pad"], backoff=0.10), seeds=(rg.q,))
-            if okp:
-                return {**g, "q_grasp": rg.q, "q_pre": rp.q}
+            if not okp:
+                continue
+            if robust > 0 and not all(self.ik_ok(side, self.pose(g["R"], g["pad"] + np.array(d)), seeds=(rg.q,))[1]
+                                      for d in ((robust, 0, 0), (-robust, 0, 0), (0, robust, 0), (0, -robust, 0))):
+                continue
+            return {**g, "q_grasp": rg.q, "q_pre": rp.q}
         return None
 
     def plan_pick(self, side, obj):
@@ -307,11 +321,14 @@ class OVMMExpert:
                 "reachable": 0, "grasp_options": 0, "ik_ok": 0, "sample_obj_arm": None}
         self.log.setdefault("pick_diag", {})[side] = diag
         best = None
-        for c in cands:
+        ranked = []
+        for c in cands:                                   # geodesic first (cheap), IK only for the nearest
             ok, _, geo = NAV.plan(self.env, c["xyz"])
-            if not ok or not np.isfinite(geo):
-                continue
-            diag["reachable"] += 1
+            if ok and np.isfinite(geo):
+                ranked.append((geo, c))
+        diag["reachable"] = len(ranked)
+        ranked.sort(key=lambda gc: gc[0])
+        for geo, c in ranked[:IK_CANDIDATES]:
             A = self._arm_frame_at(c["xyz"], c["yaw"])
             Ai = np.linalg.inv(A)
             o_arm = (Ai @ np.r_[centre, 1.0])[:3]
@@ -320,13 +337,12 @@ class OVMMExpert:
                 diag["sample_obj_arm"] = o_arm.round(3).tolist()
             opts = self.grasp_candidates(o_arm, R_arm, half)
             diag["grasp_options"] = max(diag["grasp_options"], len(opts))
-            g = self.feasible_grasp(side, opts)
+            g = self.feasible_grasp(side, opts, robust=0.03)
             if g is None:
                 continue
             diag["ik_ok"] += 1
-            cost = geo + 0.3 * g["tilt"] + (0.2 if g["mode"] == "rim" else 0.0)
-            if best is None or cost < best["cost"]:
-                best = {"standoff": c, "grasp": g, "cost": cost, "geo": geo}
+            best = {"standoff": c, "grasp": g, "cost": geo + 0.3 * g["tilt"], "geo": geo}
+            break                                         # nearest feasible standoff
         return best
 
     def _arm_frame_at(self, xyz_hab, yaw):
@@ -359,12 +375,15 @@ class OVMMExpert:
             if g.object_name not in receps:
                 continue
             rec = receps[g.object_name]
-            for _ in range(10):
+            for _ in range(6):
                 p = np.array(rec.sample_uniform_global(self.env.sim, 0.6))
-                for c in self.standoff_candidates(p, side, n=60):
+                ranked = []
+                for c in self.standoff_candidates(p, side, n=40):
                     ok, _, geo = NAV.plan(self.env, c["xyz"])
-                    if not ok or not np.isfinite(geo):
-                        continue
+                    if ok and np.isfinite(geo):
+                        ranked.append((geo, c))
+                ranked.sort(key=lambda gc: gc[0])
+                for geo, c in ranked[:6]:
                     tried += 1
                     A = self._arm_frame_at(c["xyz"], c["yaw"])
                     p_arm = (np.linalg.inv(A) @ np.r_[p, 1.0])[:3]
