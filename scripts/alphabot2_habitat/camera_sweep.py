@@ -30,8 +30,7 @@ EPS = os.environ["EPISODES"].split(",")
 res = {}
 for tag, urdf in variants:
     env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=os.environ.get("SPLIT", "train"),
-                      overrides=[f"habitat.simulator.agents.main_agent.articulated_agent_urdf={urdf}",
-                                 "+habitat.gym.obs_keys=[head_rgb,object_segmentation,goal_recep_segmentation]"])
+                      overrides=[f"habitat.simulator.agents.main_agent.articulated_agent_urdf={urdf}"])
     stats = {"approach_obj": [], "standoff_obj": [], "approach_rec": [], "standoff_rec": [], "episodes": 0}
     for eid in EPS:
         try:
@@ -53,8 +52,7 @@ for tag, urdf in variants:
             xz = NAV.pose2d(env)[0]
             seen.append((float(np.linalg.norm(xz - np.array([goal[0], goal[2]]))), bool(m.sum() >= MIN_PIX)))
         goal = pk["standoff"]["xyz"]
-        NAV.follow(env, goal, on_step=lambda o: on_obs(o, "object_segmentation", goal))
-        NAV.follow(env, goal, face_xz=None)
+        NAV.follow(env, goal, on_step=lambda o: on_obs(o, "object_segmentation", goal), arrive_m=0.02)
         # turn to the planned heading and look
         for _ in range(80):
             _, yaw, _ = NAV.pose2d(env)
