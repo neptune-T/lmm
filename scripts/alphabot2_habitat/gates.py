@@ -217,13 +217,14 @@ if kind == "pilot":
          scenes=len({p["scene"] for p in good}), engineering_errors=[r["episode_id"] for r in rs if r.get("engineering_error")],
          episodes=per)
 if kind == "dataqc":
-    # gates.py dataqc COLLECT_DIR UNITS_JSON MIN_ACCEPTED MIN_ARM_SHARE MIN_SCENE_COVERAGE
+    # gates.py dataqc COLLECT_DIR UNITS_JSON MIN_ACCEPTED MIN_ARM_SHARE MIN_SCENE_COVERAGE [MIN_SCENES]
     # Hard data gate before SFT (presets live in configs/alphabot2_pi05/schedule.yaml): enough accepted
     # trajectories; EVERY accepted trajectory intact, 10 Hz-aligned and leakage-free; no determinism break
     # anywhere (success but fresh-reset replay mismatch); both arms and the feasible scenes covered.
     import zipfile, ast
     out_dir, units = sys.argv[2], json.load(open(sys.argv[3]))
     n_min, arm_min, cov_min = int(sys.argv[4]), float(sys.argv[5]), float(sys.argv[6])
+    scenes_min = int(sys.argv[7]) if len(sys.argv) > 7 else 0
     rs = rows(out_dir)
     acc = [r for r in rs if r.get("accepted")]
     CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
@@ -264,8 +265,10 @@ if kind == "dataqc":
     feas_scenes = {u["scene"] for u in units}
     cov = len({r.get("scene") for r in acc} & feas_scenes) / max(1, len(feas_scenes))
     share = {a: (arms[a] / len(acc) if acc else 0.0) for a in arms}
-    ok = (len(acc) >= n_min and not bad and not mismatch and all(v >= arm_min for v in share.values()) and cov >= cov_min)
-    emit("dataqc", ok, accepted=len(acc), processed=len(rs), min_accepted=n_min, integrity_failures=bad[:20],
+    n_scenes = len({r.get("scene") for r in acc})
+    ok = (len(acc) >= n_min and not bad and not mismatch and all(v >= arm_min for v in share.values()) and cov >= cov_min
+          and n_scenes >= scenes_min)
+    emit("dataqc", ok, scenes=n_scenes, min_scenes=scenes_min, accepted=len(acc), processed=len(rs), min_accepted=n_min, integrity_failures=bad[:20],
          n_integrity_failures=len(bad), success_but_replay_mismatch=mismatch[:20], arm_share=share, min_arm_share=arm_min,
          scene_coverage=round(cov, 3), feasible_scenes=len(feas_scenes), min_scene_coverage=cov_min,
          objects=len({r.get("object") for r in acc}), accepted_steps=sum(int(r.get("steps") or 0) for r in acc))

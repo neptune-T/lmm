@@ -1,19 +1,22 @@
-"""Long-running AlphaBot 2 OVMM scheduler (system python3, stdlib only):
-continuous collection -> data QC gate -> LeRobot conversion -> pi0.5 SFT -> normal-init e2e eval.
+"""Long-running AlphaBot 2 OVMM scheduler (system python3, stdlib only).
 
-* Collection always runs (collect_supervisor.py child, restarted if it dies; it adopts idle GPUs).
-* GPUs: a GPU is usable only if no foreign compute process is on it (a compute-app pid not visible in
-  this container). SFT takes truly idle GPUs first, then collection GPUs beyond min_collect_gpus, which
-  are handed back through collect_control.json. Other users' processes are never touched or preempted.
-* Hard gates stop every later stage and are recorded with their reason; nothing is relaxed:
-  data QC (gates.py dataqc), conversion failure, SFT non-finite loss (exit 3), SFT restarts exhausted,
-  val feasibility screen incomplete, eval engineering failure of every episode.
-  Missing SFT env/assets is a recorded block that is re-checked each poll (collection keeps going).
-* SFT crash/stall -> restart (resume from the newest checkpoint) up to max_restarts.
-* After eval: funnel overall / by hand / by scene; decision.json states which branch applies
-  (full-task success stable non-zero -> next: empirical frontier + FP8 rollout scaling; ~0 -> analyse
-  funnel and SFT/data coverage). The scheduler never starts RL.
-State: RUNS/scheduler_state.json; events: RUNS/scheduler_events.jsonl.
+Collection runs continuously. Tiered pi0.5 SFT rounds run IN PARALLEL with it (schedule.json "rounds"):
+each round starts when its data gate passes on the accepted data at that moment (QC over every accepted
+trajectory, no replay mismatch anywhere, enough trajectories / scenes / both arms), converts a snapshot,
+trains the balanced variant, evaluates it end-to-end from normal OVMM initialization, then (lower
+priority) the uniform baseline if listed. The next round is created only after the previous round's
+balanced eval shows stable non-zero full success; otherwise rounds halt and a funnel diagnosis is
+written (which of find / grasp / carry / place drops), so data is not piled up blindly.
+
+* GPUs: usable only with no foreign compute process (pid not visible in this container). SFT takes idle
+  GPUs first, then collection GPUs beyond min_collect_gpus (handed back via collect_control.json).
+  Other users' processes are never touched or preempted. One GPU job (SFT or eval) at a time.
+* Hard blocks stop SFT/eval work (collection continues) and are recorded with their reason: data QC
+  integrity/determinism failure, conversion failure, SFT non-finite loss (exit 3) or restarts exhausted,
+  val feasibility screen incomplete, policy server failure, eval failing on every episode.
+  A missing SFT env/assets is a wait (re-checked every poll), not a block.
+* SFT crash/stall -> restart with resume (newest complete checkpoint), up to max_restarts.
+* RL / frontier are never started. State: RUNS/scheduler_state.json; events: RUNS/scheduler_events.jsonl.
 
     python3 gpu_scheduler.py /workspace/lmm/configs/alphabot2_pi05/schedule.json
 """
@@ -26,8 +29,15 @@ CFG = json.load(open(sys.argv[1]))
 R = CFG["runs"]
 STATE_F, EV_F = f"{R}/scheduler_state.json", f"{R}/scheduler_events.jsonl"
 os.makedirs(f"{R}/logs", exist_ok=True)
-st = json.load(open(STATE_F)) if os.path.exists(STATE_F) else {"stage": "COLLECTING", "sft_attempts": 0}
+st = json.load(open(STATE_F)) if os.path.exists(STATE_F) else {}
+st.setdefault("rounds", {r["name"]: {"status": "waiting"} for r in CFG["rounds"]})
+st.setdefault("jobs", [])
+st.setdefault("halt_rounds", False)
+st.setdefault("blocked", None)
 procs = {}
+ROUNDS = {r["name"]: r for r in CFG["rounds"]}
+ORDER = [r["name"] for r in CFG["rounds"]]
+KIND_PRIO = {"convert": 0, "sft": 1, "eval": 2}
 
 
 def save():
@@ -36,16 +46,16 @@ def save():
 
 
 def event(kind, **kw):
-    rec = {"time": time.strftime("%F %T"), "event": kind, "stage": st["stage"], **kw}
+    rec = {"time": time.strftime("%F %T"), "event": kind, **kw}
     with open(EV_F, "a") as f:
-        f.write(json.dumps(rec) + "\n")
-    print(json.dumps(rec), flush=True)
+        f.write(json.dumps(rec, default=str) + "\n")
+    print(json.dumps(rec, default=str), flush=True)
 
 
-def block(stage, reason, **kw):
-    st["stage"], st["blocked"] = f"BLOCKED_{stage}", {"reason": reason, **kw}
+def block(gate_name, reason, **kw):
+    st["blocked"] = {"gate": gate_name, "reason": reason, "time": time.strftime("%F %T"), **kw}
     save()
-    event("BLOCKED", gate=stage, reason=reason, **kw)
+    event("BLOCKED", gate=gate_name, reason=reason, **kw)
 
 
 def sh(cmd, log, env=None, cwd=None):
@@ -69,11 +79,11 @@ def gpus():
                           capture_output=True, text=True).stdout
     foreign = {u.strip() for p, u in (l.split(",") for l in apps.strip().splitlines() if l.strip())
                if not os.path.exists(f"/proc/{p.strip()}")}
-    out = []
+    out = {}
     for l in q.strip().splitlines():
         i, uuid, used, tot, util = [x.strip() for x in l.split(",")]
-        out.append({"index": int(i), "used": int(used), "free": int(tot) - int(used), "util": int(util),
-                    "foreign": uuid in foreign})
+        out[int(i)] = {"index": int(i), "used": int(used), "free": int(tot) - int(used), "util": int(util),
+                       "foreign": uuid in foreign}
     return out
 
 
@@ -103,211 +113,299 @@ def ensure_collection():
                                "RUN": f"{S}/run_habitat.sh", "PILOT": f"{S}/pilot.py"})
 
 
-def pick_gpus(n, min_free):
-    """n GPUs with no foreign process and >= min_free MiB free once our collection leaves them."""
+def acquire(n_min, n_max, min_free):
+    """Up to n_max (at least n_min) GPUs with no foreign process: idle ones first, then collection GPUs
+    beyond min_collect_gpus, which collection hands back. Returns the list or None."""
     owned = set(collect_status().get("owned_gpus", []))
-    keep = CFG["collect"]["min_collect_gpus"]
-    gs = [g for g in gpus() if not g["foreign"]]
-    idle = [g["index"] for g in gs if g["index"] not in owned and g["used"] < 500 and g["free"] >= min_free]
-    ours = [g["index"] for g in gs if g["index"] in owned]
-    spare = ours[keep:] if len(ours) > keep else []
-    chosen = (idle + spare)[:n]
-    return chosen if len(chosen) == n else None
+    g = gpus()
+    ok = [i for i, x in g.items() if not x["foreign"]]
+    idle = [i for i in ok if i not in owned and g[i]["used"] < 500 and g[i]["free"] >= min_free]
+    ours = [i for i in ok if i in owned]
+    spare = ours[CFG["collect"]["min_collect_gpus"]:]
+    chosen = (idle + spare)[:n_max]
+    if len(chosen) < n_min:
+        return None
+    if any(i in owned for i in chosen):
+        control(chosen)
+        time.sleep(CFG["collect"]["poll_s"] + 30)                 # the supervisor stops its workers there
+    g = gpus()
+    chosen = [i for i in chosen if not g[i]["foreign"] and g[i]["free"] >= min_free]
+    if len(chosen) < n_min:
+        control([])
+        event("gpus_not_free", wanted=n_min)
+        return None
+    control(chosen)
+    return chosen
 
 
-def sft_cfg():
-    out, name = {}, None
-    for l in open(CFG["sft"]["config"]):                  # tiny yaml subset: top-level scalar keys
-        if ":" in l and not l.startswith((" ", "#")):
-            k, v = l.split(":", 1)
-            out[k.strip()] = v.split("#")[0].strip()
-    return out
+def env_ready():
+    A, py = CFG["sft"]["assets"], CFG["sft"]["python"]
+    return [p for p in (py, f"{A}/ckpt/config.json", f"{A}/paligemma_tokenizer.model") if not os.path.exists(p)]
 
 
-def step():
-    stg = st["stage"]
-    if stg.startswith("BLOCKED") and not stg == "BLOCKED_SFT_ENV":
+def env_pi():
+    A = CFG["sft"]["assets"]
+    return {"PI05_CKPT": f"{A}/ckpt", "PI05_SPM": f"{A}/paligemma_tokenizer.model", "TORCHDYNAMO_DISABLE": "1",
+            "LMM_REPO": L, "PYTHONUNBUFFERED": "1",
+            "HF_HOME": os.path.join(os.path.dirname(CFG["sft"]["python"]), "..", "..", "_hf_home")}
+
+
+def ds_dir(rnd, split):
+    return f"{CFG['sft']['datasets']}/alphabot2_ovmm_{rnd}_{split}"
+
+
+def sft_config(rnd, variant):
+    """Round/variant config = the variant's base yaml with name/out/data/steps replaced."""
+    name = f"{rnd}_{variant}"
+    out_cfg = f"{R}/sft_configs/{name}.yaml"
+    os.makedirs(os.path.dirname(out_cfg), exist_ok=True)
+    rep = {"name": name, "out": f"{CFG['sft']['out']}/{name}", "train_data": ds_dir(rnd, "train"),
+           "val_data": ds_dir(rnd, "val"), "steps": str(ROUNDS[rnd]["steps"]), "init_checkpoint": f"{CFG['sft']['assets']}/ckpt"}
+    lines = []
+    for l in open(CFG["sft"]["configs"][variant]):
+        k = l.split(":", 1)[0]
+        lines.append(f"{k}: {rep[k]}\n" if (":" in l and not l.startswith((" ", "#")) and k in rep) else l)
+    open(out_cfg, "w").writelines(lines)
+    return out_cfg, rep["out"], name
+
+
+# ------------------------------------------------------------------ data gate -> round jobs
+def check_data():
+    if st["blocked"] or st["halt_rounds"] or time.time() - st.get("last_data_check", 0) < CFG["data_check_every_s"]:
         return
-    if stg in ("COLLECTING",):
-        if time.time() - st.get("last_qc", 0) < CFG["data_gate"]["check_every_s"]:
-            return
-        st["last_qc"] = time.time()
-        D = CFG["data_gate"]
-        res = gate("dataqc", CFG["collect"]["out"], f"{R}/feasibility/units_train.json", str(D["min_accepted"]),
-                   str(D["min_arm_share"]), str(D["min_scene_coverage"]))
-        st["last_qc_result"] = {k: res.get(k) for k in ("pass", "accepted", "arm_share", "scene_coverage",
-                                                        "n_integrity_failures", "success_but_replay_mismatch")}
+    nxt = next((n for n in ORDER if st["rounds"][n]["status"] == "waiting"), None)
+    if nxt is None:
+        return
+    i = ORDER.index(nxt)
+    if i > 0 and st["rounds"][ORDER[i - 1]]["status"] != "decided_ok":
+        return                                                     # previous round not yet shown to work
+    st["last_data_check"] = time.time()
+    r = ROUNDS[nxt]
+    res = gate("dataqc", CFG["collect"]["out"], f"{R}/feasibility/units_train.json", str(r["min_accepted"]),
+               str(r["min_arm_share"]), str(r["min_scene_coverage"]), str(r["min_scenes"]))
+    keep = {k: res.get(k) for k in ("pass", "accepted", "scenes", "arm_share", "scene_coverage",
+                                    "n_integrity_failures", "success_but_replay_mismatch")}
+    st["rounds"][nxt]["last_check"] = keep
+    save()
+    event("data_check", round=nxt, **keep)
+    if res.get("n_integrity_failures") or res.get("success_but_replay_mismatch"):
+        block("DATAQC", "integrity/timing/leakage failure or determinism break in accepted data", round=nxt, result=res)
+        return
+    if res.get("pass"):
+        st["rounds"][nxt].update({"status": "running", "snapshot_accepted": res["accepted"]})
+        st["jobs"].append({"round": nxt, "kind": "convert", "variant": None, "status": "pending"})
+        for v in r["variants"]:
+            st["jobs"] += [{"round": nxt, "kind": "sft", "variant": v, "status": "pending", "attempts": 0},
+                           {"round": nxt, "kind": "eval", "variant": v, "status": "pending", "pass": 0}]
         save()
-        event("dataqc", **st["last_qc_result"])
-        if res.get("n_integrity_failures") or res.get("success_but_replay_mismatch"):
-            block("DATAQC", "integrity/timing/leakage failure or determinism break in accepted data", result=res)
-        elif res.get("pass"):
-            st["stage"] = "SFT_ENV"
-            save()
-        return
-    if stg in ("SFT_ENV", "BLOCKED_SFT_ENV"):
-        A, py = CFG["sft"]["assets"], CFG["sft"]["python"]
-        missing = [p for p in (py, f"{A}/ckpt/config.json", f"{A}/paligemma_tokenizer.model") if not os.path.exists(p)]
-        if missing:
-            if stg != "BLOCKED_SFT_ENV":
-                block("SFT_ENV", "pi0.5 env or assets missing (collection continues; re-checked every poll)", missing=missing)
+        event("round_start", round=nxt, accepted=res["accepted"])
+
+
+def prio(j):
+    # every balanced job (and conversions) before any uniform baseline job; then round order, then kind
+    return (0 if j["variant"] in (None, "balanced") else 1, ORDER.index(j["round"]), KIND_PRIO[j["kind"]])
+
+
+# ------------------------------------------------------------------ jobs
+def run_convert(j):
+    r = ROUNDS[j["round"]]
+    for split in ("train", "val"):
+        cmd = [CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/ovmm_to_lerobot.py", "--src", CFG["collect"]["out"],
+               "--split", split, "--out", ds_dir(j["round"], split)]
+        if split == "train" and r["max_episodes"]:
+            cmd += ["--max-episodes", str(r["max_episodes"])]
+        rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{R}/logs/convert_{j['round']}_{split}.log", "a"),
+                            stderr=subprocess.STDOUT).returncode
+        if rc != 0:
+            j["status"] = "blocked"
+            block("CONVERT", f"ovmm_to_lerobot.py {j['round']} --split {split} exited {rc}")
             return
-        st["stage"] = "CONVERT"
-        save()
-        event("sft_env_ok")
-        return
-    sc = sft_cfg()
-    env_pi = {"PI05_CKPT": f"{CFG['sft']['assets']}/ckpt", "PI05_SPM": f"{CFG['sft']['assets']}/paligemma_tokenizer.model",
-              "TORCHDYNAMO_DISABLE": "1", "LMM_REPO": L, "PYTHONUNBUFFERED": "1"}
-    if stg == "CONVERT":
-        for split, key in (("train", "train_data"), ("val", "val_data")):
-            r = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/ovmm_to_lerobot.py", "--src", CFG["collect"]["out"],
-                                "--split", split, "--out", sc[key]], env={**os.environ, **env_pi},
-                               stdout=open(f"{R}/logs/convert_{split}.log", "a"), stderr=subprocess.STDOUT)
-            if r.returncode != 0:
-                block("CONVERT", f"ovmm_to_lerobot.py --split {split} exited {r.returncode}")
-                return
-        st["stage"] = "SFT"
-        save()
-        event("converted")
-        return
-    if stg == "SFT":
-        p = procs.get("sft")
-        out = sc["out"]
-        if p is None or p.poll() is not None:
-            if p is not None:
-                rc = p.returncode
-                if rc == 0 and os.path.exists(f"{out}/DONE"):
-                    control([])
-                    st["stage"] = "EVAL_SCREEN"
-                    save()
-                    event("sft_done", summary=json.load(open(f"{out}/summary.json")))
-                    return
-                if rc == 3:
-                    block("SFT", "non-finite loss (exit 3)")
-                    return
-                st["sft_attempts"] += 1
-                event("sft_exit", returncode=rc, attempt=st["sft_attempts"])
-                if st["sft_attempts"] > CFG["sft"]["max_restarts"]:
-                    block("SFT", "restarts exhausted", returncode=rc)
-                    return
-            chosen = pick_gpus(CFG["sft"]["gpus"], CFG["sft"]["min_free_mib"])
-            if chosen is None:
-                return                                             # wait for free GPUs; collection keeps running
-            control(chosen)
-            time.sleep(CFG["collect"]["poll_s"] + 30)              # let the supervisor hand them back
-            now = {g["index"]: g for g in gpus()}
-            if any(now[i]["foreign"] or now[i]["free"] < CFG["sft"]["min_free_mib"] for i in chosen):
-                control([])                                        # someone else got there first: retry later
-                event("sft_gpus_not_free", gpus=chosen)
-                return
-            procs["sft"] = sh([CFG["sft"]["python"], "-m", "torch.distributed.run", f"--nproc_per_node={len(chosen)}",
-                               f"--master_port={CFG['sft']['master_port']}", f"{L}/scripts/alphabot2_pi05/sft_ovmm.py",
-                               "--config", CFG["sft"]["config"]], f"{R}/logs/sft_attempt{st['sft_attempts']}.log",
-                              env={**env_pi, "CUDA_VISIBLE_DEVICES": ",".join(map(str, chosen))}, cwd=f"{L}/scripts/alphabot2_pi05")
-            st["sft_gpus"] = chosen
-            save()
-            event("sft_launch", gpus=chosen, attempt=st["sft_attempts"])
+    j["status"] = "done"
+    event("converted", round=j["round"])
+
+
+def run_sft(j):
+    cfg, out, name = sft_config(j["round"], j["variant"])
+    p = procs.get("sft")
+    if p is None:                                                   # (re)launch, resuming if checkpoints exist
+        if j.get("attempts", 0) > CFG["sft"]["max_restarts"]:
+            j["status"] = "blocked"
+            block("SFT", "restarts exhausted", run=name)
             return
+        chosen = acquire(CFG["sft"]["min_gpus"], CFG["sft"]["max_gpus"], CFG["sft"]["min_free_mib"])
+        if chosen is None:
+            return
+        procs["sft"] = sh([CFG["sft"]["python"], "-m", "torch.distributed.run", f"--nproc_per_node={len(chosen)}",
+                           f"--master_port={CFG['sft']['master_port']}", f"{L}/scripts/alphabot2_pi05/sft_ovmm.py",
+                           "--config", cfg], f"{R}/logs/sft_{name}_attempt{j['attempts']}.log",
+                          env={**env_pi(), "CUDA_VISIBLE_DEVICES": ",".join(map(str, chosen))}, cwd=f"{L}/scripts/alphabot2_pi05")
+        j.update({"status": "running", "gpus": chosen})
+        save()
+        event("sft_launch", run=name, gpus=chosen, attempt=j["attempts"])
+        return
+    if p.poll() is None:
         try:
             hb = json.load(open(f"{out}/heartbeat.json"))
-            stalled = time.time() - hb["time"] > CFG["sft"]["stall_s"]
+            if time.time() - hb["time"] > CFG["sft"]["stall_s"]:
+                event("sft_stall_kill", run=name, heartbeat=hb)
+                os.killpg(p.pid, signal.SIGTERM)
         except (OSError, ValueError):
-            stalled = False
-        if stalled:
-            event("sft_stall_kill", heartbeat=hb)
-            os.killpg(p.pid, signal.SIGTERM)
+            pass
         return
-    if stg == "EVAL_SCREEN":
-        E = CFG["eval"]
-        g = pick_gpus(1, E["server_min_free_mib"])
+    rc = p.returncode
+    del procs["sft"]
+    control([])
+    if rc == 0 and os.path.exists(f"{out}/DONE"):
+        j["status"] = "done"
+        event("sft_done", run=name, summary=json.load(open(f"{out}/summary.json")))
+    elif rc == 3:
+        j["status"] = "blocked"
+        block("SFT", "non-finite loss (exit 3)", run=name)
+    else:
+        j["attempts"] = j.get("attempts", 0) + 1
+        event("sft_exit_restart", run=name, returncode=rc, attempt=j["attempts"])
+
+
+def val_units():
+    f = f"{R}/feasibility/units_{CFG['eval']['split']}.json"
+    if os.path.exists(f):
+        return f
+    E = CFG["eval"]
+    g = acquire(1, 1, E["server_min_free_mib"])
+    if g is None:
+        return None
+    subprocess.run(RUN + [f"{S}/emb_screen.py"], env={**os.environ, "SCREEN": f"{R}/feasibility/screen_{E['split']}.json",
+                                                     "SPLIT": E["split"], "REPLICAS": str(E["replicas"]), "GPU": str(g[0]),
+                                                     "OUT": f"{R}/emb_{E['split']}"},
+                   stdout=open(f"{R}/logs/emb_{E['split']}.log", "a"), stderr=subprocess.STDOUT)
+    control([])
+    res = gate("embodiment", f"{R}/emb_{E['split']}", f"{R}/feasibility/screen_{E['split']}.json", f)
+    if not res.get("pass"):
+        if os.path.exists(f):
+            os.remove(f)
+        block("EVAL_SCREEN", "val embodiment screen incomplete/non-deterministic", result=res)
+        return None
+    st["val_funnel"] = res.get("funnel_episodes")
+    event("val_screen_ok", funnel=res.get("funnel_episodes"), units=res.get("units"))
+    return f
+
+
+def run_eval(j):
+    E = CFG["eval"]
+    _, sft_out, name = sft_config(j["round"], j["variant"])
+    uf = val_units()
+    if uf is None:
+        return
+    while j["pass"] < E["passes"]:
+        g = acquire(1, 1, E["server_min_free_mib"])
         if g is None:
             return
-        subprocess.run(RUN + [f"{S}/emb_screen.py"], env={**os.environ, "SCREEN": f"{R}/feasibility/screen_{E['split']}.json",
-                                                         "SPLIT": E["split"], "REPLICAS": str(E["replicas"]), "GPU": str(g[0]),
-                                                         "OUT": f"{R}/emb_{E['split']}"},
-                       stdout=open(f"{R}/logs/emb_{E['split']}.log", "a"), stderr=subprocess.STDOUT)
-        res = gate("embodiment", f"{R}/emb_{E['split']}", f"{R}/feasibility/screen_{E['split']}.json",
-                   f"{R}/feasibility/units_{E['split']}.json")
-        if not res.get("pass"):
-            block("EVAL_SCREEN", "val embodiment screen incomplete/non-deterministic", result=res)
-            return
-        st["eval_units"] = len(json.load(open(f"{R}/feasibility/units_{E['split']}.json")))
-        st["eval_funnel_val"] = res.get("funnel_episodes")
-        st["stage"], st["eval_pass"] = "EVAL", 0
-        save()
-        event("eval_screen_ok", units=st["eval_units"], funnel=res.get("funnel_episodes"))
-        return
-    if stg == "EVAL":
-        E = CFG["eval"]
-        if st["eval_pass"] >= E["passes"]:
-            st["stage"] = "REPORT"
-            save()
-            return
-        g = pick_gpus(1, E["server_min_free_mib"])
-        if g is None:
-            return
-        gpu = g[0]
-        control([gpu])
-        out = f"{R}/eval/{sc['name']}/pass{st['eval_pass']}"
+        gpu, out = g[0], f"{R}/eval/{name}/pass{j['pass']}"
         os.makedirs(out, exist_ok=True)
-        server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sc['out']}/best",
-                     "--port", str(E["port"])], f"{out}/server.log", env={**env_pi, "CUDA_VISIBLE_DEVICES": str(gpu)},
+        j["status"] = "running"
+        save()
+        server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sft_out}/best",
+                     "--port", str(E["port"])], f"{out}/server.log", env={**env_pi(), "CUDA_VISIBLE_DEVICES": str(gpu)},
                     cwd=f"{L}/scripts/alphabot2_pi05")
         t0 = time.time()
-        while time.time() - t0 < 1800 and "READY" not in open(f"{out}/server.log").read():
-            if server.poll() is not None:
-                break
+        while time.time() - t0 < 1800 and server.poll() is None and "READY" not in open(f"{out}/server.log").read():
             time.sleep(10)
         if server.poll() is not None or "READY" not in open(f"{out}/server.log").read():
             control([])
-            block("EVAL", "policy server failed to start", log=open(f"{out}/server.log").read()[-1500:])
+            j["status"] = "blocked"
+            block("EVAL", "policy server failed to start", run=name, log=open(f"{out}/server.log").read()[-1500:])
             return
-        units = ",".join(u["unit"] for u in json.load(open(f"{R}/feasibility/units_{E['split']}.json")))
+        units = ",".join(u["unit"] for u in json.load(open(uf)))
         ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
                  env={"EPISODES": units, "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
                       "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(E["exec_steps"]),
-                      "SEED_OFFSET": str(st["eval_pass"])}) for w in range(E["workers"])]
+                      "SEED_OFFSET": str(j["pass"])}) for w in range(E["workers"])]
         for w in ws:
             w.wait()
         os.killpg(server.pid, signal.SIGTERM)
         control([])
-        summ = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out], capture_output=True, text=True)
-                          .stdout.split("###EVAL_SUMMARY###", 1)[1])
-        if summ["engineering_errors"] == summ["episodes"]:
-            block("EVAL", "every eval episode failed with an engineering error", summary=summ)
+        s = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out], capture_output=True, text=True)
+                       .stdout.split("###EVAL_SUMMARY###", 1)[1])
+        if s["engineering_errors"] == s["episodes"]:
+            j["status"] = "blocked"
+            block("EVAL", "every eval episode failed with an engineering error", run=name, summary=s)
             return
-        st.setdefault("eval_summaries", []).append(summ)
-        st["eval_pass"] += 1
+        j.setdefault("summaries", []).append(s)
+        j["pass"] += 1
         save()
-        event("eval_pass_done", n=st["eval_pass"], overall=summ["overall"], full_success_count=summ["full_success_count"])
+        event("eval_pass_done", run=name, n=j["pass"], overall=s["overall"], full_success_count=s["full_success_count"],
+              by_hand=s["by_hand"])
+    j["status"] = "done"
+    decide(j, name)
+
+
+def decide(j, name):
+    ss = j["summaries"]
+    stable = all(s["full_success_count"] > 0 for s in ss)
+    funnel = [s["overall"] for s in ss]
+    stages = ("find", "grasp", "carry", "place", "full")
+    drop = None
+    if not stable:                                                 # where does the funnel collapse?
+        m = {k: sum(f[k] or 0 for f in funnel) / len(funnel) for k in stages}
+        prev, drop = 1.0, None
+        for k in stages:
+            if m[k] < 0.5 * prev or m[k] < 0.02:
+                drop = {"stage": k, "rate": round(m[k], 4), "previous": round(prev, 4)}
+                break
+            prev = m[k]
+    dec = {"run": name, "round": j["round"], "variant": j["variant"],
+           "snapshot_accepted": st["rounds"][j["round"]].get("snapshot_accepted"),
+           "eval_split": CFG["eval"]["split"], "val_funnel_full_to_feasible": st.get("val_funnel"),
+           "passes": [{"overall": s["overall"], "full_success_count": s["full_success_count"], "by_hand": s["by_hand"],
+                       "by_scene": s["by_scene"]} for s in ss],
+           "full_success_stable_nonzero": stable, "first_collapsing_stage": drop,
+           "next": ("data chain + recipe work: continue rounds; frontier/FP8/RL wait for the user's review" if stable else
+                    "rounds halted: inspect the collapsing funnel stage and SFT/data coverage; do not add data blindly"),
+           "note": "AlphaBot-feasible val subset from normal OVMM initialization; not standard OVMM; RL never auto-started"}
+    os.makedirs(f"{R}/eval/{name}", exist_ok=True)
+    json.dump(dec, open(f"{R}/eval/{name}/decision.json", "w"), indent=1)
+    if j["variant"] == "balanced":
+        st["rounds"][j["round"]]["status"] = "decided_ok" if stable else "decided_zero"
+        if not stable:
+            st["halt_rounds"] = True
+    save()
+    event("round_decision", run=name, stable_nonzero=stable, first_collapsing_stage=drop)
+
+
+def run_jobs():
+    if st["blocked"]:
         return
-    if stg == "REPORT":
-        ss = st["eval_summaries"]
-        full = [s["full_success_count"] for s in ss]
-        stable = all(f > 0 for f in full)
-        dec = {"sft": sc["name"], "eval_split": CFG["eval"]["split"], "eval_units": st.get("eval_units"),
-               "val_funnel_full_to_feasible": st.get("eval_funnel_val"),
-               "passes": [{"overall": s["overall"], "full_success_count": s["full_success_count"],
-                           "by_hand": s["by_hand"]} for s in ss],
-               "full_success_stable_nonzero": stable,
-               "next": ("empirical frontier + FP8 rollout scaling" if stable else
-                        "analyse the funnel and SFT/data coverage; do not enter RL"),
-               "note": "evaluated on the AlphaBot-feasible val subset; not standard OVMM; the scheduler starts no RL"}
-        json.dump(dec, open(f"{R}/eval/{sc['name']}/decision.json", "w"), indent=1)
-        st["stage"] = "DONE_ROUND1"
-        save()
-        event("round1_decision", **{k: dec[k] for k in ("full_success_stable_nonzero", "next")})
+    pend = sorted([j for j in st["jobs"] if j["status"] in ("pending", "running")], key=prio)
+    if not pend:
+        return
+    miss = env_ready()
+    if miss:
+        if st.get("env_wait_logged") != miss:
+            st["env_wait_logged"] = miss
+            save()
+            event("waiting_for_sft_env", missing=miss)
+        return
+    j = pend[0]
+    if j["kind"] == "convert":
+        run_convert(j)
+    elif j["kind"] == "sft":
+        run_sft(j)
+    elif j["kind"] == "eval":
+        sft_job = next(x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "sft" and x["variant"] == j["variant"])
+        if sft_job["status"] == "done":
+            run_eval(j)
+    save()
 
 
 def main():
-    event("scheduler_start")
+    event("scheduler_start", rounds=ORDER)
     while True:
         try:
             ensure_collection()
-            step()
-        except Exception as e:                                     # never let the scheduler die silently
-            event("scheduler_error", error=repr(e)[:300])
+            check_data()
+            run_jobs()
+        except Exception as e:                                     # never die silently
+            event("scheduler_error", error=repr(e)[:400])
         time.sleep(60)
 
 
