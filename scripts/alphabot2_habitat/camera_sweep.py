@@ -16,14 +16,14 @@ import json, os, sys
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
 
 MIN_PIX = 20
-OUT = os.environ.get("OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/camera_sweep")
+OUT = os.environ.get("OUT", "/workspace/runtime/runs/camera_sweep")
 os.makedirs(OUT, exist_ok=True)
 variants = [v.split(":", 1) for v in os.environ["HEAD_URDFS"].split(",")]
 EPS = os.environ["EPISODES"].split(",")

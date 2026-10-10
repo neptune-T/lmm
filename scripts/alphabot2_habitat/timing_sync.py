@@ -22,7 +22,7 @@ import json, math, os, sys
 import magnum as mn
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import snapshot as SN  # noqa: E402

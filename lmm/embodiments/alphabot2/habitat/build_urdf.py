@@ -40,7 +40,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEPS = Path(os.environ.get("ALPHABOT2_DEPS", "/nix/yanjun/zts/alphabot2/deps"))
+DEPS = Path(os.environ.get("ALPHABOT2_DEPS", "/workspace/runtime/deps"))
 PACKAGES = {
     "ai2_bot2_description": DEPS / "robot_descriptions/humanoid/Ai2Robotics/ai2_bot2_description",
     "aidal_description": DEPS / "robot_descriptions/humanoid/Realman/aidal_description",

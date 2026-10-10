@@ -15,13 +15,13 @@ from collections import defaultdict
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import ExpertFailure, OVMMExpert  # noqa: E402
 
-OUT = os.environ.get("OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/manip_qual")
+OUT = os.environ.get("OUT", "/workspace/runtime/runs/manip_qual")
 os.makedirs(OUT, exist_ok=True)
 MODES = os.environ.get("MODES", "left,right,auto").split(",")
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))

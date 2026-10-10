@@ -12,13 +12,13 @@ import json, math, os, sys, time
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2 import kinematics as K  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.alphabot2_robot import HOME, SIDES  # noqa: E402
 
-OUT = os.environ.get("SMOKE_OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/smoke")
+OUT = os.environ.get("SMOKE_OUT", "/workspace/runtime/runs/smoke")
 os.makedirs(OUT, exist_ok=True)
 R, OK = {}, {}
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")))

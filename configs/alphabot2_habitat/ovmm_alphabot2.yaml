@@ -41,7 +41,7 @@ habitat:
     concur_render: False
     agents:
       main_agent:
-        articulated_agent_urdf: /nix/yanjun/zts/alphabot2/habitat_assets/alphabot2/alphabot2.urdf
+        articulated_agent_urdf: /workspace/runtime/alphabot2_assets/alphabot2/alphabot2.urdf
         articulated_agent_type: AlphaBot2Robot
         grasp_managers: 2        # manager 0 = left hand, 1 = right hand
         # navmesh agent radius = chassis circumscribed radius about the wheel centre (0.378 m,
@@ -56,7 +56,7 @@ habitat:
           left_wrist_rgb_sensor: {height: 240, width: 320, hfov: 87}
           right_wrist_rgb_sensor: {height: 240, width: 320, hfov: 87}
     habitat_sim_v0:
-      physics_config_file: /nix/yanjun/zts/alphabot2/habitat_assets/alphabot2.physics_config.json
+      physics_config_file: /workspace/runtime/alphabot2_assets/alphabot2.physics_config.json
   task:
     physics_target_sps: 200.0
     actions:

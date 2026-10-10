@@ -12,8 +12,8 @@ import json, math, os, sys
 
 import numpy as np
 
-URDF = os.environ.get("ALPHABOT2_URDF", "/nix/yanjun/zts/alphabot2/habitat_assets/alphabot2/alphabot2.urdf")
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+URDF = os.environ.get("ALPHABOT2_URDF", "/workspace/runtime/alphabot2_assets/alphabot2/alphabot2.urdf")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 import habitat_sim  # noqa: E402
 import magnum as mn  # noqa: E402

@@ -18,12 +18,12 @@ from collections import defaultdict
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 
-OUT = os.environ.get("OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/nav_qual")
+OUT = os.environ.get("OUT", "/workspace/runtime/runs/nav_qual")
 os.makedirs(OUT, exist_ok=True)
 PER_SCENE = int(os.environ.get("EPISODES_PER_SCENE", "2"))
 MAX_SCENES = int(os.environ.get("MAX_SCENES", "15"))

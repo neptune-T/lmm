@@ -18,14 +18,14 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 import habitat  # noqa: E402
 import habitat_sim  # noqa: E402
 from habitat_baselines.config.default import get_config  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 
-OUT = os.environ.get("OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/feasibility")
+OUT = os.environ.get("OUT", "/workspace/runtime/runs/feasibility")
 os.makedirs(OUT, exist_ok=True)
 W_MIN, W_MAX = 0.016, 0.072
 H_MIN, H_MAX = 0.35, 1.15
@@ -37,7 +37,7 @@ sc.enable_physics = False
 sim = habitat_sim.Simulator(habitat_sim.Configuration(sc, [habitat_sim.agent.AgentConfiguration()]))
 otm = sim.get_object_template_manager()
 for p in cfg.habitat.simulator.additional_object_paths:
-    otm.load_configs(os.path.join("/nix/yanjun/zts/lmm/home-robot", p))
+    otm.load_configs(os.path.join("/workspace/runtime/home-robot", p))
 rom = sim.get_rigid_object_manager()
 bbox_cache = {}
 

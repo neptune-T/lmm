@@ -12,7 +12,7 @@ import numpy as np
 
 HAB_CONFIG = os.environ.get(
     "ALPHABOT2_OVMM_CONFIG",
-    "/nix/yanjun/zts/lmm/home-robot/src/third_party/habitat-lab/habitat-lab/habitat/config/benchmark/ovmm/ovmm_alphabot2.yaml")
+    "/workspace/runtime/home-robot/src/third_party/habitat-lab/habitat-lab/habitat/config/benchmark/ovmm/ovmm_alphabot2.yaml")
 #: Stretch-specific pieces of the OVMM config, deleted (not edited) for AlphaBot 2
 STRETCH_ONLY = ("habitat.task.actions.arm_action", "habitat.task.actions.base_velocity",
                 "habitat.task.lab_sensors.joint_sensor", "habitat.task.lab_sensors.joint_velocity_sensor")

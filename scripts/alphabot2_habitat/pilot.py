@@ -13,24 +13,47 @@ categories -- no arm token), arm used, stages (metadata only), OVMM metrics, sta
 Replay: reset_to(episode) + the same start fix, the recorded joint18 sequence
 re-executed; per-step proprio / base / object / held-object comparison and OVMM success.
 
+The same script is the continuous collector (one code path for pilot and scale):
+  EPISODES=a,b,c | EPISODE_FILE=ids.txt   episode order (one id per line or comma separated)
+  WORKER/NWORKERS                         shard of the order (one Habitat process per shard)
+  MAX_OK                                  stop after this many accepted episodes (default unlimited)
+  ARM_MODE=auto|left|right                auto = arm chosen by geometry (default)
+Episodes with a results row from any worker are skipped (resume after a crash/restart).
+
     EPISODES=... OUT=... run_habitat.sh pilot.py
 """
-import json, os, sys, time, traceback
+import glob, json, os, sys, time, traceback, zlib
 
 import numpy as np
 
-REPO = os.environ.get("LMM_REPO", "/nix/yanjun/zts/alphabot2/lmm_repo")
+REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import snapshot as SN  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
 
-OUT = os.environ.get("OUT", "/nix/yanjun/zts/alphabot2/habitat_runs/pilot")
+OUT = os.environ.get("OUT", "/workspace/runtime/runs/pilot")
 os.makedirs(f"{OUT}/episodes", exist_ok=True)
 CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
-MAX_OK = int(os.environ.get("MAX_OK", "20"))
+MAX_OK = int(os.environ.get("MAX_OK", "1000000000"))
+ARM_MODE = os.environ.get("ARM_MODE", "auto")
+WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
+if os.environ.get("EPISODE_FILE"):
+    EPS = open(os.environ["EPISODE_FILE"]).read().replace(",", "\n").split()
+else:
+    EPS = os.environ["EPISODES"].split(",")
+EPS = EPS[WK::NW]
+DONE = set()
+for f in glob.glob(f"{OUT}/results*.jsonl"):
+    for line in open(f):
+        try:
+            DONE.add(str(json.loads(line)["episode_id"]))
+        except (ValueError, KeyError):
+            pass                                             # a torn last line from a killed worker
+EPS = [e for e in EPS if e not in DONE]
+print("COLLECT", json.dumps({"worker": WK, "nworkers": NW, "todo": len(EPS), "skipped_done": len(DONE),
+                             "arm_mode": ARM_MODE}), flush=True)
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split="train")
-EPS = os.environ["EPISODES"].split(",")
 KEYS = ("ovmm_find_object_phase_success", "ovmm_pick_object_phase_success", "ovmm_find_recep_phase_success",
         "ovmm_place_object_phase_success", "ovmm_place_success", "obj_anywhere_on_goal")
 
@@ -58,12 +81,12 @@ def render_now():
 
 
 n_ok = 0
-res_f = open(f"{OUT}/results.jsonl", "a")
+res_f = open(f"{OUT}/results_w{WK:02d}.jsonl", "a")
 for eid in EPS:
     if n_ok >= MAX_OK:
         break
     t0 = time.time()
-    rec = {"episode_id": eid}
+    rec = {"episode_id": eid, "worker": WK, "arm_mode": ARM_MODE}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
            "state": []}
     try:
@@ -94,7 +117,7 @@ for eid in EPS:
                 buf["state"].append(SN.state_vector(env_))
             return obs
         HE.step18 = rec_step
-        ex = OVMMExpert(env, on_step=on_step)
+        ex = OVMMExpert(env, on_step=on_step, force_arm=None if ARM_MODE == "auto" else ARM_MODE)
         try:
             ex.run()
             rec["expert_completed"] = True
@@ -135,7 +158,8 @@ for eid in EPS:
             np.savez_compressed(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
             np.savez_compressed(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
                                 joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]),
-                                stage_id=np.asarray([hash(s) % 997 for s in buf["stage"]]))
+                                stage=np.asarray(buf["stage"]),        # metadata only
+                                stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],
                            "metadata_only": ["stage", "events", "arm", "plans", "ovmm", "grasp_events"]},
