@@ -1,0 +1,78 @@
+diff -ruN a/habitat-lab/habitat/config/default_structured_configs.py b/habitat-lab/habitat/config/default_structured_configs.py
+--- a/habitat-lab/habitat/config/default_structured_configs.py
++++ b/habitat-lab/habitat/config/default_structured_configs.py
+@@ -1651,6 +1651,20 @@
+ 
+ 
+ @dataclass
++class LeftWristRGBSensorConfig(HabitatSimRGBSensorConfig):
++    uuid: str = "left_wrist_rgb"
++    width: int = 224
++    height: int = 224
++
++
++@dataclass
++class RightWristRGBSensorConfig(HabitatSimRGBSensorConfig):
++    uuid: str = "right_wrist_rgb"
++    width: int = 224
++    height: int = 224
++
++
++@dataclass
+ class ArmDepthSensorConfig(HabitatSimDepthSensorConfig):
+     uuid: str = "articulated_agent_arm_depth"
+     width: int = 256
+@@ -2133,6 +2147,18 @@
+ )
+ 
+ cs.store(
++    group="habitat/simulator/sim_sensors",
++    name="left_wrist_rgb_sensor",
++    node=LeftWristRGBSensorConfig,
++)
++
++cs.store(
++    group="habitat/simulator/sim_sensors",
++    name="right_wrist_rgb_sensor",
++    node=RightWristRGBSensorConfig,
++)
++
++cs.store(
+     group="habitat/simulator/sim_sensors",
+     name="head_depth_sensor",
+     node=HeadDepthSensorConfig,
+diff -ruN a/habitat-lab/habitat/tasks/rearrange/articulated_agent_manager.py b/habitat-lab/habitat/tasks/rearrange/articulated_agent_manager.py
+--- a/habitat-lab/habitat/tasks/rearrange/articulated_agent_manager.py
++++ b/habitat-lab/habitat/tasks/rearrange/articulated_agent_manager.py
+@@ -46,12 +46,13 @@
+     start_js: np.ndarray
+     is_pb_installed: bool
+     _ik_helper: Optional[IkHelper] = None
++    active_grasp_manager_idx: int = 0
+ 
+     @property
+     def grasp_mgr(self):
+         if len(self.grasp_mgrs) == 0:
+             raise Exception("Agent data has no grasp manager defined")
+-        return self.grasp_mgrs[0]
++        return self.grasp_mgrs[self.active_grasp_manager_idx]
+ 
+     @property
+     def ik_helper(self):
+@@ -146,6 +147,7 @@
+         Called at the end of the simulator reconfigure method. Used to set the starting configurations of the robots if specified in the task config.
+         """
+         for agent_data in self._all_agent_data:
++            agent_data.active_grasp_manager_idx = 0
+             agent_data.articulated_agent.params.arm_init_params = (
+                 agent_data.start_js
+                 + agent_data.cfg.joint_start_noise
+@@ -189,7 +191,7 @@
+     @property
+     def grasp_iter(self) -> Iterator[RearrangeGraspManager]:
+         for agent_data in self._all_agent_data:
+-            yield agent_data.grasp_mgr
++            yield from agent_data.grasp_mgrs
+ 
+     def first_setup(self):
+         for agent_data in self._all_agent_data:
