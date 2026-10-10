@@ -1,23 +1,83 @@
 {
-  "_doc": "gpu_scheduler.py: collection always runs; tiered SFT rounds start in parallel once each round's data gate passes; each round's balanced SFT is evaluated end-to-end from normal OVMM init before the next round is created. Thresholds are presets of this restore, recorded with every gate result.",
+  "_doc": "gpu_scheduler.py: collection always runs; tiered SFT rounds start in parallel once each round's data gate passes; each round's balanced SFT is evaluated end-to-end from normal OVMM init before the next round is created. Thresholds are presets of this restore, recorded with every gate result. Each round: policy-interface gate before SFT; explicit H_exec (receding horizon) for gate and eval; eval reports success_count/eval_count per noise-seed pass.",
   "runs": "/workspace/runtime/runs",
-  "collect": {"out": "/workspace/runtime/runs/collect_v1", "units_file": "/workspace/runtime/runs/lists/collect_train.txt",
-              "start_gpus": [1], "per_gpu": 4, "poll_s": 120, "min_collect_gpus": 1},
+  "collect": {
+    "out": "/workspace/runtime/runs/collect_v1",
+    "units_file": "/workspace/runtime/runs/lists/collect_train.txt",
+    "start_gpus": [
+      1
+    ],
+    "per_gpu": 4,
+    "poll_s": 120,
+    "min_collect_gpus": 1
+  },
   "data_check_every_s": 900,
   "rounds": [
-    {"name": "sanity_v1", "min_accepted": 100, "max_episodes": 200, "min_scenes": 5, "min_arm_share": 0.10,
-     "min_scene_coverage": 0.0, "steps": 6000, "variants": ["balanced", "uniform"]},
-    {"name": "v2", "min_accepted": 300, "max_episodes": 500, "min_scenes": 10, "min_arm_share": 0.15,
-     "min_scene_coverage": 0.0, "steps": 15000, "variants": ["balanced"]},
-    {"name": "main_v3", "min_accepted": 1000, "max_episodes": 0, "min_scenes": 0, "min_arm_share": 0.20,
-     "min_scene_coverage": 0.75, "steps": 30000, "variants": ["balanced", "uniform"]}
+    {
+      "name": "sanity_v1",
+      "min_accepted": 100,
+      "max_episodes": 200,
+      "min_scenes": 5,
+      "min_arm_share": 0.1,
+      "min_scene_coverage": 0.0,
+      "steps": 6000,
+      "variants": [
+        "balanced",
+        "uniform"
+      ],
+      "h_exec": 5
+    },
+    {
+      "name": "v2",
+      "min_accepted": 300,
+      "max_episodes": 500,
+      "min_scenes": 10,
+      "min_arm_share": 0.15,
+      "min_scene_coverage": 0.0,
+      "steps": 15000,
+      "variants": [
+        "balanced"
+      ],
+      "h_exec": 10
+    },
+    {
+      "name": "main_v3",
+      "min_accepted": 1000,
+      "max_episodes": 0,
+      "min_scenes": 0,
+      "min_arm_share": 0.2,
+      "min_scene_coverage": 0.75,
+      "steps": 30000,
+      "variants": [
+        "balanced",
+        "uniform"
+      ],
+      "h_exec": 10
+    }
   ],
-  "sft": {"python": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/envs/alphabot2_pi05/bin/python",
-          "configs": {"balanced": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_balanced.yaml",
-                      "uniform": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_uniform.yaml"},
-          "datasets": "/workspace/runtime/datasets", "out": "/workspace/runtime/sft",
-          "min_gpus": 1, "max_gpus": 4, "min_free_mib": 76000, "max_restarts": 5, "stall_s": 2400,
-          "master_port": 29531, "assets": "/workspace/runtime/pi05"},
-  "eval": {"split": "val", "replicas": 1, "workers": 6, "exec_steps": 10, "passes": 2, "port": 5600,
-           "server_min_free_mib": 20000}
+  "sft": {
+    "python": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/envs/alphabot2_pi05/bin/python",
+    "configs": {
+      "balanced": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_balanced.yaml",
+      "uniform": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_uniform.yaml"
+    },
+    "datasets": "/workspace/runtime/datasets",
+    "out": "/workspace/runtime/sft",
+    "min_gpus": 1,
+    "max_gpus": 4,
+    "min_free_mib": 76000,
+    "max_restarts": 5,
+    "stall_s": 2400,
+    "master_port": 29531,
+    "assets": "/workspace/runtime/pi05"
+  },
+  "eval": {
+    "split": "val",
+    "replicas": 1,
+    "workers": 6,
+    "passes": 2,
+    "port": 5600,
+    "server_min_free_mib": 20000,
+    "min_full_success_per_pass": 3
+  }
 }

@@ -37,7 +37,7 @@ st.setdefault("blocked", None)
 procs = {}
 ROUNDS = {r["name"]: r for r in CFG["rounds"]}
 ORDER = [r["name"] for r in CFG["rounds"]]
-KIND_PRIO = {"convert": 0, "sft": 1, "eval": 2}
+KIND_PRIO = {"convert": 0, "iface": 1, "sft": 2, "eval": 3}
 
 
 def save():
@@ -194,6 +194,7 @@ def check_data():
     if res.get("pass"):
         st["rounds"][nxt].update({"status": "running", "snapshot_accepted": res["accepted"]})
         st["jobs"].append({"round": nxt, "kind": "convert", "variant": None, "status": "pending"})
+        st["jobs"].append({"round": nxt, "kind": "iface", "variant": None, "status": "pending"})
         for v in r["variants"]:
             st["jobs"] += [{"round": nxt, "kind": "sft", "variant": v, "status": "pending", "attempts": 0},
                            {"round": nxt, "kind": "eval", "variant": v, "status": "pending", "pass": 0}]
@@ -222,6 +223,33 @@ def run_convert(j):
             return
     j["status"] = "done"
     event("converted", round=j["round"])
+
+
+def run_iface(j):
+    """Policy-interface gate on the round's converted dataset (hard gate before any SFT of the round)."""
+    cfg, _, _ = sft_config(j["round"], "balanced")
+    g = acquire(1, 1, CFG["eval"]["server_min_free_mib"])
+    if g is None:
+        return
+    out = f"{R}/interface_gate/{j['round']}"
+    rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/interface_gate.py", "--config", cfg,
+                         "--collect", CFG["collect"]["out"], "--h-exec", str(ROUNDS[j["round"]]["h_exec"]), "--out", out],
+                        env={**os.environ, **env_pi(), "CUDA_VISIBLE_DEVICES": str(g[0])}, cwd=f"{L}/scripts/alphabot2_pi05",
+                        stdout=open(f"{R}/logs/interface_gate_{j['round']}.log", "a"), stderr=subprocess.STDOUT).returncode
+    control([])
+    try:
+        res = json.load(open(f"{out}/interface_gate.json"))
+    except (OSError, ValueError):
+        res = {"pass": False, "error": f"interface_gate.py exited {rc} without a report"}
+    with open(f"{R}/pipeline_status.jsonl", "a") as f:
+        f.write(json.dumps({"gate": "interface", "round": j["round"], "pass": res.get("pass"), "checks": res.get("checks")}) + "\n")
+    if rc == 0 and res.get("pass"):
+        j["status"] = "done"
+        event("interface_gate_pass", round=j["round"], checks=res.get("checks"), visualization=res.get("report", {}).get("visualization"))
+    else:
+        j["status"] = "blocked"
+        block("INTERFACE", "policy-interface gate failed", round=j["round"],
+              failed=[k for k, v in (res.get("checks") or {}).items() if not v], error=res.get("error"))
 
 
 def run_sft(j):
@@ -318,7 +346,7 @@ def run_eval(j):
         units = ",".join(u["unit"] for u in json.load(open(uf)))
         ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
                  env={"EPISODES": units, "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
-                      "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(E["exec_steps"]),
+                      "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(ROUNDS[j["round"]]["h_exec"]),
                       "SEED_OFFSET": str(j["pass"])}) for w in range(E["workers"])]
         for w in ws:
             w.wait()
@@ -339,37 +367,63 @@ def run_eval(j):
     decide(j, name)
 
 
+def wilson(k, n, z=1.96):
+    if n == 0:
+        return [0.0, 0.0]
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
+
+
 def decide(j, name):
     ss = j["summaries"]
-    stable = all(s["full_success_count"] > 0 for s in ss)
-    funnel = [s["overall"] for s in ss]
     stages = ("find", "grasp", "carry", "place", "full")
+    k_min = CFG["eval"]["min_full_success_per_pass"]
+    passes = []
+    for s in ss:
+        n = s["overall"]["n"]
+        counts = {k: int(round((s["overall"][k] or 0) * n)) for k in stages}
+        passes.append({"eval_count": n, "success_count": s["full_success_count"],
+                       "success_rate": round(s["full_success_count"] / max(1, n), 4),
+                       "success_rate_wilson95": wilson(s["full_success_count"], n),
+                       "funnel_counts": counts, "engineering_errors": s["engineering_errors"],
+                       "by_hand": s["by_hand"], "by_scene": s["by_scene"]})
+    works = all(p["success_count"] >= k_min for p in passes)
     drop = None
-    if not stable:                                                 # where does the funnel collapse?
-        m = {k: sum(f[k] or 0 for f in funnel) / len(funnel) for k in stages}
-        prev, drop = 1.0, None
+    if not works:                                                  # where does the funnel collapse?
+        m = {k: sum(p["funnel_counts"][k] for p in passes) / max(1, sum(p["eval_count"] for p in passes)) for k in stages}
+        prev = 1.0
         for k in stages:
             if m[k] < 0.5 * prev or m[k] < 0.02:
                 drop = {"stage": k, "rate": round(m[k], 4), "previous": round(prev, 4)}
                 break
             prev = m[k]
-    dec = {"run": name, "round": j["round"], "variant": j["variant"],
+    sft_sum = {}
+    try:
+        sft_sum = json.load(open(f"{sft_config(j['round'], j['variant'])[1]}/summary.json"))
+    except (OSError, ValueError):
+        pass
+    dec = {"run": name, "round": j["round"], "variant": j["variant"], "h_exec": ROUNDS[j["round"]]["h_exec"], "h_pred": 50,
            "snapshot_accepted": st["rounds"][j["round"]].get("snapshot_accepted"),
+           "sft": {k: sft_sum.get(k) for k in ("steps", "samples_seen", "effective_epochs", "train_episodes", "train_frames",
+                                               "global_batch", "best_step", "best_val_loss")},
            "eval_split": CFG["eval"]["split"], "val_funnel_full_to_feasible": st.get("val_funnel"),
-           "passes": [{"overall": s["overall"], "full_success_count": s["full_success_count"], "by_hand": s["by_hand"],
-                       "by_scene": s["by_scene"]} for s in ss],
-           "full_success_stable_nonzero": stable, "first_collapsing_stage": drop,
-           "next": ("data chain + recipe work: continue rounds; frontier/FP8/RL wait for the user's review" if stable else
+           "passes": passes, "criterion": f">= {k_min} full successes in every noise-seed pass",
+           "works": works, "first_collapsing_stage": drop,
+           "next": ("continue rounds; frontier/FP8/RL wait for the user's review" if works else
                     "rounds halted: inspect the collapsing funnel stage and SFT/data coverage; do not add data blindly"),
            "note": "AlphaBot-feasible val subset from normal OVMM initialization; not standard OVMM; RL never auto-started"}
     os.makedirs(f"{R}/eval/{name}", exist_ok=True)
     json.dump(dec, open(f"{R}/eval/{name}/decision.json", "w"), indent=1)
     if j["variant"] == "balanced":
-        st["rounds"][j["round"]]["status"] = "decided_ok" if stable else "decided_zero"
-        if not stable:
+        st["rounds"][j["round"]]["status"] = "decided_ok" if works else "decided_insufficient"
+        if not works:
             st["halt_rounds"] = True
     save()
-    event("round_decision", run=name, stable_nonzero=stable, first_collapsing_stage=drop)
+    event("round_decision", run=name, works=works,
+          success=[f"{p['success_count']}/{p['eval_count']}" for p in passes], first_collapsing_stage=drop)
 
 
 def run_jobs():
@@ -388,8 +442,12 @@ def run_jobs():
     j = pend[0]
     if j["kind"] == "convert":
         run_convert(j)
+    elif j["kind"] == "iface":
+        run_iface(j)
     elif j["kind"] == "sft":
-        run_sft(j)
+        gate_job = next((x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "iface"), None)
+        if gate_job is None or gate_job["status"] == "done":
+            run_sft(j)
     elif j["kind"] == "eval":
         sft_job = next(x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "sft" and x["variant"] == j["variant"])
         if sft_job["status"] == "done":

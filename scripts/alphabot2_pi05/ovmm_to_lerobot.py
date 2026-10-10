@@ -23,10 +23,9 @@ import numpy as np
 
 REPO = os.environ.get("LMM_REPO", str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, REPO)
-from lmm.embodiments.alphabot2 import cartesian as C  # noqa: E402
-from lmm.embodiments.alphabot2 import pi05_contract as P  # noqa: E402
+from lmm.embodiments.alphabot2 import ovmm_policy_io as IO  # noqa: E402
 
-CAM_MAP = {"camera_top": "head_rgb", "camera_left": "right_wrist_rgb", "camera_right": "left_wrist_rgb"}
+CAM_MAP = IO.CAMERA_MAP                     # the one interface (crossed wrists; camera_front absent)
 
 
 def split_of(episode, val_permille):
@@ -60,8 +59,8 @@ def main():
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     img = {"dtype": "image" if args.png else "video", "shape": (240, 320, 3), "names": ["height", "width", "channels"]}
-    features = {"observation.state": {"dtype": "float32", "shape": (16,), "names": list(P.STATE_NAMES)},
-                "action": {"dtype": "float32", "shape": (18,), "names": list(C.CARTESIAN_MOBILE_ACTION18_LABELS)},
+    features = {"observation.state": {"dtype": "float32", "shape": (16,), "names": list(IO.STATE_LABELS)},
+                "action": {"dtype": "float32", "shape": (18,), "names": list(IO.ACTION_LABELS)},
                 **{f"observation.images.{k}": dict(img) for k in CAM_MAP}}
     if os.path.exists(args.out):
         shutil.rmtree(args.out)
@@ -89,7 +88,7 @@ def main():
             raise RuntimeError(f"{d}: misaligned arrays")
         frames = {k: ims[c] for k, c in CAM_MAP.items()}
         for t in range(T):
-            frame = {"observation.state": P.dataset_state_from_proprio(prop[t]).astype(np.float32),
+            frame = {"observation.state": IO.state_from_proprio(prop[t]).astype(np.float32),
                      "action": act[t].astype(np.float32), "task": meta["instruction"]}
             for k in CAM_MAP:
                 frame[f"observation.images.{k}"] = frames[k][t]
@@ -114,7 +113,8 @@ def main():
     np.savez(Path(args.out) / "frame_meta.npz", **{k: np.asarray(v) for k, v in fm.items()},
              stage_names=np.asarray(sorted(stage_names, key=stage_names.get)),
              scene_names=np.asarray(sorted(scenes, key=scenes.get)))
-    out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "episodes": used,
+    Path(args.out, "policy_io.json").write_text(json.dumps(IO.describe(), indent=1))
+    out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "episodes": used, "policy_io": IO.describe(),
            "frames": int(sum(u["frames"] for u in used)), "camera_map": CAM_MAP, "video": not args.png,
            "features": {k: v["shape"] for k, v in features.items()}, "wall_s": round(time.time() - t0, 1)}
     Path(args.out, "ovmm_episode_index.json").write_text(json.dumps(out, indent=1, default=str))

@@ -25,7 +25,7 @@ REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts", "alphabot2_pi05"))
 from lmm.embodiments.alphabot2 import cartesian as C  # noqa: E402
-from lmm.embodiments.alphabot2 import pi05_contract as P  # noqa: E402
+from lmm.embodiments.alphabot2 import ovmm_policy_io as IO  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from wire import recv_msg, send_msg  # noqa: E402
 
@@ -36,7 +36,7 @@ EXEC = int(os.environ.get("EXEC_STEPS", "10"))
 SEED_OFFSET = int(os.environ.get("SEED_OFFSET", "0"))       # policy noise seed pass (stability across passes)
 MAX_STEPS = int(os.environ.get("MAX_STEPS", "3000"))
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
-CAM_MAP = {"camera_top": "head_rgb", "camera_left": "right_wrist_rgb", "camera_right": "left_wrist_rgb"}
+CAM_MAP = IO.CAMERA_MAP                                       # the one interface (crossed wrists)
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"),
           ("full", "ovmm_place_success"))
@@ -46,12 +46,13 @@ sock = socket.create_connection(("127.0.0.1", int(os.environ.get("PORT", "5600")
 send_msg(sock, {"cmd": "ping"})
 srv = recv_msg(sock)
 assert set(srv.get("cams", [])) == set(CAM_MAP), f"server cameras {srv.get('cams')} != {sorted(CAM_MAP)}"
+assert 1 <= EXEC <= IO.H_PRED, f"H_exec {EXEC} outside 1..{IO.H_PRED}"
 
 
 def observe():
     HE.robot(env).update()
     o = env.sim.get_sensor_observations()
-    return {k: np.asarray(o[c])[..., :3].astype(np.uint8) for k, c in CAM_MAP.items()}
+    return IO.policy_images(o)
 
 
 def metrics():
@@ -66,8 +67,7 @@ def metrics():
 
 
 def instruction(ep):
-    nice = lambda s: str(s).replace("_", " ")
-    return f"Move the {nice(ep.object_category)} from the {nice(ep.start_recep_category)} to the {nice(ep.goal_recep_category)}."
+    return IO.instruction(ep.object_category, ep.start_recep_category, ep.goal_recep_category)
 
 
 fn = f"{OUT}/eval_w{WK:02d}.jsonl"
@@ -76,7 +76,8 @@ for unit in units:
     if unit in done:
         continue
     ep_id, rep = HE.parse_unit(unit)
-    rec = {"unit": unit, "episode": ep_id, "replica": rep, "split": SPLIT}
+    rec = {"unit": unit, "episode": ep_id, "replica": rep, "split": SPLIT, "h_exec": EXEC, "h_pred": IO.H_PRED,
+           "seed_offset": SEED_OFFSET}
     t0 = time.time()
     try:
         HE.reset_to(env, ep_id, rep)
@@ -90,7 +91,7 @@ for unit in units:
         while steps < MAX_STEPS and not env.episode_over:
             if k >= EXEC:
                 send_msg(sock, {"cmd": "infer", "images": observe(), "task": rec["instruction"],
-                                "state": P.dataset_state_from_proprio(rob.proprio16()).astype(np.float32),
+                                "state": IO.state_from_proprio(rob.proprio16()).astype(np.float32),
                                 "seed": int(HE.episode_seed(ep_id, rep)) + 1_000_003 * SEED_OFFSET + steps})
                 r = recv_msg(sock)
                 if "error" in r:

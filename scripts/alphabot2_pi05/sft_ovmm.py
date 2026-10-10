@@ -22,14 +22,10 @@ import torch
 import torch.distributed as dist
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ovmm_model  # noqa: E402
 import sampling  # noqa: E402
-from pi05_runtime import SPM, SentencePieceTokenizer  # noqa: E402
-from lerobot.configs.policies import PreTrainedConfig  # noqa: E402
-from lerobot.configs.types import FeatureType, PolicyFeature  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata  # noqa: E402
-from lerobot.policies.factory import make_pre_post_processors  # noqa: E402
-from lerobot.policies.pi05.modeling_pi05 import PI05Policy  # noqa: E402
 
 GROUPS = {"left_xyz": slice(0, 3), "left_quat": slice(3, 7), "right_xyz": slice(7, 10), "right_quat": slice(10, 14),
           "grippers": slice(14, 16), "base_v": slice(16, 17), "base_omega": slice(17, 18)}
@@ -85,15 +81,8 @@ def main():
 
     resume = newest_ckpt(out)
     src = str(resume / "policy") if resume else C["init_checkpoint"]
-    cfg = PreTrainedConfig.from_pretrained(C["init_checkpoint"])
-    cfg.input_features = {"observation.state": PolicyFeature(type=FeatureType.STATE, shape=(16,)),
-                          **{f"observation.images.{c}": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 240, 320))
-                             for c in C["cameras"]}}
-    cfg.output_features = {"action": PolicyFeature(type=FeatureType.ACTION, shape=(18,))}
-    cfg.compile_model = False
-    cfg.gradient_checkpointing = bool(C.get("gradient_checkpointing", True))
-    cfg.dtype = C["precision"]["params"]
-    cfg.device = dev
+    cfg = ovmm_model.build_config(C["init_checkpoint"], device=dev, dtype=C["precision"]["params"],
+                                  gradient_checkpointing=bool(C.get("gradient_checkpointing", True)))
     mtr = LeRobotDatasetMetadata("local/alphabot2_ovmm_train", root=C["train_data"])
     stats = mtr.stats                                                    # TRAIN ONLY
     dts = resolve_delta_timestamps(cfg, mtr)
@@ -104,15 +93,7 @@ def main():
         raise RuntimeError(f"frame_meta has {len(fm['episode_index'])} frames, dataset {len(tr)}")
     w, winfo = sampling.weights(fm, C["sampling"])
 
-    policy = PI05Policy.from_pretrained(src, config=cfg).to(dev)
-    feats = {**cfg.input_features, **cfg.output_features}
-    pre, post = make_pre_post_processors(
-        cfg, pretrained_path=C["init_checkpoint"], dataset_stats=stats,
-        preprocessor_overrides={"device_processor": {"device": dev},
-                                "normalizer_processor": {"stats": stats, "features": feats, "norm_map": cfg.normalization_mapping},
-                                "tokenizer_processor": {"tokenizer": SentencePieceTokenizer(SPM)}},
-        postprocessor_overrides={"unnormalizer_processor": {"stats": stats, "features": cfg.output_features,
-                                                            "norm_map": cfg.normalization_mapping}})
+    policy, pre, post = ovmm_model.build(cfg, src, C["init_checkpoint"], stats, device=dev)
     params = [p for p in policy.parameters() if p.requires_grad]
     model = policy
     if ddp:
@@ -131,7 +112,11 @@ def main():
         opt.load_state_dict(st["optimizer"])
         start, best = st["step"], tuple(st["best"])
     if rank == 0:
-        info0 = {"config": C, "resume_from": str(resume) if resume else None, "start_step": start, "world": world,
+        info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
+                 "resume_from": str(resume) if resume else None, "start_step": start, "world": world,
+                 "global_batch": int(C["batch_per_gpu"]) * world,
+                 "planned_samples": int(C["batch_per_gpu"]) * world * steps,
+                 "planned_effective_epochs": int(C["batch_per_gpu"]) * world * steps / max(1, len(tr)),
                  "train_episodes": mtr.total_episodes, "train_frames": mtr.total_frames, "val_frames": len(va),
                  "trainable_params": sum(p.numel() for p in params), "sampling": winfo}
         (out / f"run_info_step{start:06d}.json").write_text(json.dumps(info0, indent=1, default=str))
@@ -206,7 +191,8 @@ def main():
         n_log += len(batch["action"]) * world
         if rank == 0 and (step % 25 == 0 or step == start + 1):
             dt = time.time() - t_log
-            rec = {"step": step, "loss": float(loss), "group_loss": {g: float(np.asarray(inf["loss_per_dim"])[s].mean())
+            seen = step * int(C["batch_per_gpu"]) * world
+            rec = {"step": step, "samples_seen": seen, "effective_epochs": seen / len(tr), "loss": float(loss), "group_loss": {g: float(np.asarray(inf["loss_per_dim"])[s].mean())
                                                                     for g, s in GROUPS.items()},
                    "grad_norm": gn, "lr": lr, "samples_per_s": n_log / max(dt, 1e-9),
                    "gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9}
@@ -231,7 +217,11 @@ def main():
             checkpoint(step)
     if rank == 0:
         save_policy(out / "last")
+        seen = steps * int(C["batch_per_gpu"]) * world
         summary = {"best_val_loss": best[0], "best_step": best[1], "steps": steps, "world": world,
+                   "global_batch": int(C["batch_per_gpu"]) * world, "samples_seen": seen,
+                   "train_frames": len(tr), "train_episodes": mtr.total_episodes, "effective_epochs": seen / len(tr),
+                   "unique_frame_coverage_note": "phase_balanced sampling draws with replacement by weight",
                    "selection": "lowest SFT-VAL flow-matching loss (fixed noise); evaluation episodes never used"}
         (out / "summary.json").write_text(json.dumps(summary, indent=1))
         (out / "DONE").write_text(time.strftime("%F %T"))
