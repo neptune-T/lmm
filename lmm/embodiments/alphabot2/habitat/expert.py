@@ -253,6 +253,13 @@ class OVMMExpert:
                 out.append({"xyz": p, "yaw": yaw, "d": r, "lat": lat})
         return out
 
+    @staticmethod
+    def width_along(R, R_obj, half):
+        """Object box extent along the hand's closing axis (gripper_base -x): the width the fingers
+        actually close across, computed exactly as the grasp action does at attach time."""
+        c = -np.asarray(R)[:, 0]
+        return float(2 * np.sum(np.abs(np.asarray(R_obj).T @ c) * np.asarray(half)))
+
     def grasp_candidates(self, obj_centre_arm, R_obj_arm, half, robot_xy_arm=(0.0, 0.0)):
         """Grasp options for a box object (arm frame): top/tilted grasps closing across a narrow
         horizontal axis, and a rim pinch closing across the thickness of a flat object."""
@@ -280,8 +287,14 @@ class OVMMExpert:
                     continue
                 for sgn in (1.0, -1.0):
                     R = self.frame(appr, sgn * axis)
-                    if R is not None:
-                        out.append({"mode": "top", "tilt": tilt, "R": R, "pad": pad, "width": width})
+                    if R is None:
+                        continue
+                    # frame() makes the closing axis perpendicular to the (tilted) approach, which tilts it
+                    # out of the horizontal when the object axis is not perpendicular to robot->object; the
+                    # hand then closes across the box along THAT axis (what the grasp action measures)
+                    w_eff = self.width_along(R, R_obj_arm, half)
+                    if MIN_GRASP_WIDTH_M <= w_eff <= MAX_GRASP_WIDTH_M:
+                        out.append({"mode": "top", "tilt": tilt, "R": R, "pad": pad, "width": w_eff})
         thick = 2 * half[vert]
         if ENABLE_RIM_PINCH and thick <= MAX_GRASP_WIDTH_M and min(2 * half[i] for i in hz) > MAX_GRASP_WIDTH_M:
             # flat object: pinch the rim nearest to the robot across its thickness
@@ -292,8 +305,11 @@ class OVMMExpert:
                 appr = np.array([u[0] * math.cos(down), u[1] * math.cos(down), -math.sin(down)])
                 for sgn in (1.0, -1.0):
                     R = self.frame(appr, sgn * np.array([0.0, 0.0, 1.0]))
-                    if R is not None:
-                        out.append({"mode": "rim", "tilt": down, "R": R, "pad": pad, "width": thick})
+                    if R is None:
+                        continue
+                    w_eff = self.width_along(R, R_obj_arm, half)
+                    if MIN_GRASP_WIDTH_M <= w_eff <= MAX_GRASP_WIDTH_M:
+                        out.append({"mode": "rim", "tilt": down, "R": R, "pad": pad, "width": w_eff})
         return out
 
     def feasible_grasp(self, side, cands, robust=0.0):

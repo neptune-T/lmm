@@ -37,6 +37,13 @@ passed navmesh || { note navmesh start
     touch $RUNS/nav_audit/.done; }
   gate navmesh $RUNS/nav_audit_h17 $RUNS/nav_audit; }
 
+# 2b. navmesh reachability screen of every geometry-feasible TRAIN episode (seeded OVMM reset);
+#     episode lists below come from geometry AND reachable-at-reset (reported separately from full OVMM)
+passed reach || { note reach start
+  par 4 reach SCREEN=$RUNS/feasibility/screen_train.json GPU=$GPU SPLIT=train OUT=$RUNS/reach $RUN $S/reach_screen.py
+  gate reach $RUNS/reach $RUNS/feasibility/screen_train.json $RUNS/feasibility/screen_train_reach.json
+  rm -rf $RUNS/lists/*; }
+
 # 3. runtime smoke on one episode the audit found reachable (both legs arrived)
 passed smoke || { note smoke start
   SE=$(python3 -c "
@@ -50,11 +57,11 @@ for f in sorted(glob.glob('$RUNS/nav_audit/results_w*.jsonl')):
   GPU=$GPU SPLIT=val SMOKE_EPISODE=$SE SMOKE_OUT=$RUNS/smoke $RUN $S/smoke.py > $RUNS/logs/smoke.log 2>&1
   gate smoke $RUNS/smoke/smoke.json; }
 
-# 4. episode lists from the re-screen (scene round-robin): qualification 5, pilot candidates, all feasible TRAIN
+# 4. episode lists from geometry AND reachability (scene round-robin): qualification 5, pilot candidates, all feasible TRAIN
 P=$S/pick_episodes.py
 [ -s $RUNS/lists/collect_train.txt ] || python3 - <<PY
 import subprocess
-pick = lambda n, seed: subprocess.check_output(["python3", "$P", "$RUNS/feasibility/screen_train.json", str(n), str(seed)], text=True).strip().split(",")
+pick = lambda n, seed: subprocess.check_output(["python3", "$P", "$RUNS/feasibility/screen_train_reach.json", str(n), str(seed)], text=True).strip().split(",")
 q = pick(5, 1)
 pilot = [e for e in pick(80, 2) if e not in q][:40]
 rest = [e for e in pick(1000000, 0) if e not in q and e not in pilot]

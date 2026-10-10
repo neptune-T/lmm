@@ -38,12 +38,24 @@ def make_env(gpu: int = 0, overrides: list | None = None, split: str | None = No
     return env
 
 
+def episode_seed(episode_id) -> int:
+    """Per-episode seed for OVMM's own start sampling (stable across processes and hosts)."""
+    import zlib
+    return zlib.crc32(f"alphabot2-ovmm:{episode_id}".encode()) & 0x7FFFFFFF
+
+
 def reset_to(env, episode_id):
-    """Reset into one specific OVMM episode, deserialized exactly as the stock iterator does."""
+    """Reset into one specific OVMM episode, deserialized exactly as the stock iterator does.
+
+    OVMM TRAIN episodes carry no start pose (all 37,477 are zero): OVMM samples one at every reset
+    (random navigable point on the active island + random yaw + random goal). That sampler is kept,
+    but seeded per episode (python/numpy/sim pathfinder/task via env.seed) so a fresh reset of the
+    same episode is identical -- needed for fresh-reset replay. VAL episodes have fixed starts."""
     from habitat.datasets.ovmm.ovmm_dataset import OVMMEpisodeIterator
     it0 = env._alphabot2_iter0
     env.episode_iterator = OVMMEpisodeIterator(it0.viewpoints, it0.transformations,
                                                [env._alphabot2_raw[str(episode_id)]], cycle=True, shuffle=False)
+    env.seed(episode_seed(episode_id))
     return env.reset()
 
 

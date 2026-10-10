@@ -68,6 +68,33 @@ if kind == "navmesh":
          mainline_r038_h15=pick(main), unreachable_h15=um,
          documented={"episodes": 24, "reset_goals_unreachable": 7, "both_legs_arrived": 12, "both_legs_collision_free": 11})
 
+if kind == "reach":
+    # gates.py reach REACH_DIR GEOMETRIC_SCREEN_JSON MERGED_OUT_JSON
+    # Measurement, not a ratio gate: every geometrically feasible episode screened, no engineering errors,
+    # seeded resets deterministic. Writes the merged screen (feasible = geometry AND reachable at reset).
+    rr = {}
+    for f in glob.glob(f"{sys.argv[2]}/reach_w*.jsonl"):
+        for l in open(f):
+            r = json.loads(l)
+            rr[r["episode_id"]] = r
+    geo = json.load(open(sys.argv[3]))
+    gf = [r for r in geo if r["feasible"]]
+    missing = [r["episode_id"] for r in gf if r["episode_id"] not in rr]
+    eng = [k for k, r in rr.items() if r.get("engineering_error")]
+    nondet = [k for k, r in rr.items() if r.get("repeat_start_pose_equal") is False]
+    checked = sum(1 for r in rr.values() if "repeat_start_pose_equal" in r)
+    merged = [dict(r, geometric_feasible=r["feasible"],
+                   reachable=bool(rr.get(r["episode_id"], {}).get("reachable")),
+                   feasible=bool(r["feasible"] and rr.get(r["episode_id"], {}).get("reachable"))) for r in geo]
+    json.dump(merged, open(sys.argv[4], "w"))
+    sub = [r for r in merged if r["feasible"]]
+    emit("reach", not missing and not eng and not nondet and checked > 0,
+         full_ovmm_episodes=len(geo), full_ovmm_scenes=len({r["scene"] for r in geo}),
+         geometric_feasible=len(gf), geometric_feasible_scenes=len({r["scene"] for r in gf}),
+         reachable_subset=len(sub), reachable_subset_scenes=len({r["scene"] for r in sub}),
+         reachable_subset_objects=len({r["object"] for r in sub}),
+         missing=missing[:10], engineering_errors=eng[:10], determinism_checked=checked, nondeterministic=nondet[:10])
+
 if kind == "smoke":
     r = json.load(open(sys.argv[2]))
     failed = [k for k, v in r.items() if isinstance(v, dict) and "pass" in v and not v["pass"]]
