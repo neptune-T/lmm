@@ -216,4 +216,58 @@ if kind == "pilot":
     emit("pilot", ok, processed=len(rs), complete_successes=len(good), failing_checks=bad, arms=arms,
          scenes=len({p["scene"] for p in good}), engineering_errors=[r["episode_id"] for r in rs if r.get("engineering_error")],
          episodes=per)
+if kind == "dataqc":
+    # gates.py dataqc COLLECT_DIR UNITS_JSON MIN_ACCEPTED MIN_ARM_SHARE MIN_SCENE_COVERAGE
+    # Hard data gate before SFT (presets live in configs/alphabot2_pi05/schedule.yaml): enough accepted
+    # trajectories; EVERY accepted trajectory intact, 10 Hz-aligned and leakage-free; no determinism break
+    # anywhere (success but fresh-reset replay mismatch); both arms and the feasible scenes covered.
+    import zipfile, ast
+    out_dir, units = sys.argv[2], json.load(open(sys.argv[3]))
+    n_min, arm_min, cov_min = int(sys.argv[4]), float(sys.argv[5]), float(sys.argv[6])
+    rs = rows(out_dir)
+    acc = [r for r in rs if r.get("accepted")]
+    CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
+    ARM_WORDS = re.compile(r"\b(left|right|arm|hand|gripper|stage|grasp)\b", re.I)
+
+    def npz_shapes(path):
+        out = {}
+        with zipfile.ZipFile(path) as z:
+            for n in z.namelist():
+                with z.open(n) as f:
+                    v = np.lib.format.read_magic(f)
+                    rd = np.lib.format.read_array_header_1_0 if v == (1, 0) else np.lib.format.read_array_header_2_0
+                    shape, _, dtype = rd(f)
+                    out[n[:-4]] = (tuple(shape), str(dtype))
+        return out
+
+    bad = []
+    for r in acc:
+        d = r.get("dir")
+        try:
+            im = npz_shapes(f"{d}/images.npz")
+            lo = np.load(f"{d}/lowdim.npz")
+            meta = json.load(open(f"{d}/meta.json"))
+            T = int(r["steps"])
+            ok = (set(im) == set(CAMS) and all(im[c][0] == (T, 240, 320, 3) and im[c][1] == "uint8" for c in CAMS)
+                  and set(lo.files) == {"proprio", "action", "joint18", "sim_time"}
+                  and lo["proprio"].shape == (T, 16) and lo["action"].shape == (T, 18) and lo["joint18"].shape == (T, 18)
+                  and lo["sim_time"].shape == (T,) and bool(np.all(np.abs(np.diff(lo["sim_time"]) - 0.1) < 1e-6))
+                  and os.path.exists(f"{d}/metadata.npz")
+                  and meta["policy_inputs"] == list(CAMS) + ["proprio16", "instruction"]
+                  and not ARM_WORDS.search(meta["instruction"]))
+            if not ok:
+                bad.append(r["episode_id"])
+        except Exception as e:
+            bad.append(f"{r['episode_id']}: {repr(e)[:80]}")
+    mismatch = [r["episode_id"] for r in rs if r.get("success") and not r.get("accepted")]
+    arms = {a: sum(r.get("arm") == a for r in acc) for a in ("left", "right")}
+    feas_scenes = {u["scene"] for u in units}
+    cov = len({r.get("scene") for r in acc} & feas_scenes) / max(1, len(feas_scenes))
+    share = {a: (arms[a] / len(acc) if acc else 0.0) for a in arms}
+    ok = (len(acc) >= n_min and not bad and not mismatch and all(v >= arm_min for v in share.values()) and cov >= cov_min)
+    emit("dataqc", ok, accepted=len(acc), processed=len(rs), min_accepted=n_min, integrity_failures=bad[:20],
+         n_integrity_failures=len(bad), success_but_replay_mismatch=mismatch[:20], arm_share=share, min_arm_share=arm_min,
+         scene_coverage=round(cov, 3), feasible_scenes=len(feas_scenes), min_scene_coverage=cov_min,
+         objects=len({r.get("object") for r in acc}), accepted_steps=sum(int(r.get("steps") or 0) for r in acc))
+
 emit(kind, False, error="unknown gate")

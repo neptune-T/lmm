@@ -1,0 +1,21 @@
+# AlphaBot 2 + OVMM end-to-end pi0.5 SFT, first round (answer "does the base policy work?").
+# Inputs: 3 RGB (camera_top/left/right) + 16-D proprio + language. Output: CartesianMobileAction18.
+# Full fine-tune from the public AlphaBot pi0.5 checkpoint. No RL / value / subgoal controller.
+name: sft_ovmm_uniform_v1
+init_checkpoint: /workspace/runtime/pi05/ckpt          # alphabot2/aibot2_grab_bag_combined_over_under_pi05
+train_data: /workspace/runtime/datasets/alphabot2_ovmm_train
+val_data: /workspace/runtime/datasets/alphabot2_ovmm_val
+out: /workspace/runtime/sft/sft_ovmm_uniform_v1
+cameras: [camera_top, camera_left, camera_right]
+optim: {lr: 2.5e-5, decay_lr: 2.5e-6, warmup: 1000, betas: [0.9, 0.95], weight_decay: 0.01, grad_clip: 1.0}
+steps: 30000
+batch_per_gpu: 16
+precision: {params: float32, autocast: bfloat16}      # bf16-only updates vanish below the ulp (see memory)
+gradient_checkpointing: true
+val_every: 1000
+ckpt_every: 1000          # model + optimizer + sampler/rng state, atomic; resume picks the newest
+keep_ckpts: 2
+num_workers: 12
+seed: 1000
+sampling:
+  mode: uniform           # baseline: every frame equally likely

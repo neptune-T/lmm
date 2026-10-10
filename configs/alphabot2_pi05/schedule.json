@@ -1,0 +1,12 @@
+{
+  "_doc": "gpu_scheduler.py: collection first; SFT only after the data gate, on GPUs no other user is on; then normal-init e2e eval. Thresholds are presets of this restore, recorded with every gate result.",
+  "runs": "/workspace/runtime/runs",
+  "collect": {"out": "/workspace/runtime/runs/collect_v1", "units_file": "/workspace/runtime/runs/lists/collect_train.txt",
+              "start_gpus": [1], "per_gpu": 4, "poll_s": 120, "min_collect_gpus": 1},
+  "data_gate": {"min_accepted": 1000, "min_arm_share": 0.2, "min_scene_coverage": 0.75, "check_every_s": 1800},
+  "sft": {"python": "/dev/shm/envs/pi05/bin/python", "config": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_balanced.yaml",
+          "gpus": 2, "min_free_mib": 76000, "max_restarts": 5, "stall_s": 2400, "master_port": 29531,
+          "assets": "/workspace/runtime/pi05"},
+  "eval": {"split": "val", "replicas": 1, "workers": 6, "exec_steps": 10, "passes": 2, "port": 5600,
+           "server_min_free_mib": 20000}
+}

@@ -1,7 +1,8 @@
 """Continuous AlphaBot 2 OVMM demonstration collection on whatever GPUs are idle (system python3).
 
 Every POLL_S: a GPU nobody uses (memory.used < IDLE_MIB, utilization < 5 %) is adopted; once adopted
-it stays ours. On each adopted GPU, PER_GPU collector workers (pilot.py with CLAIM_DIR) are kept alive;
+it stays ours unless OUT/collect_control.json lists it in "release_gpus" (the GPU scheduler hands it to
+SFT/eval); released GPUs are not re-adopted while listed. On each adopted GPU, PER_GPU collector workers (pilot.py with CLAIM_DIR) are kept alive;
 dead workers are restarted (they resume). Other tenants' processes are never touched. Exits when every
 episode in EPISODE_FILE has a results row. Writes OUT/supervisor_status.json.
 
@@ -62,8 +63,20 @@ while True:
     alive = {k: p for k, p in procs.items() if p.poll() is None}
     if not todo and not alive:
         break
+    # control file (written by gpu_scheduler.py): GPUs to hand back, e.g. for SFT
+    try:
+        release = set(json.load(open(f"{OUT}/collect_control.json")).get("release_gpus", []))
+    except (OSError, ValueError):
+        release = set()
+    for g in [g for g in owned if g in release]:
+        for k in [k for k in procs if k[0] == g]:
+            if procs[k].poll() is None:
+                os.killpg(procs[k].pid, 15)                       # claims of a dead pid are taken over
+            del procs[k]
+        owned.remove(g)
+        print(time.strftime("%F %T"), "RELEASE_GPU", g, flush=True)
     for idx, mem, util in gpus():
-        if idx not in owned and mem < IDLE_MIB and util < 5:
+        if idx not in owned and idx not in release and mem < IDLE_MIB and util < 5:
             owned.append(idx)
             print(time.strftime("%F %T"), "ADOPT_GPU", idx, flush=True)
     if todo:

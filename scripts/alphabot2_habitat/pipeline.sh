@@ -146,9 +146,8 @@ passed pilot || { note pilot start
   done; wait
   gate pilot $RUNS/collect_v1 $RUNS/lists/pilot_candidates.txt; }
 
-# 9. continuous collection over all feasible TRAIN episodes on every idle GPU (pilot episodes are resumed/skipped)
+# 9. long-running: continuous collection (seed-bank units, idle GPUs, crash recovery, atomic claims,
+#    resume) -> data QC gate -> conversion -> pi0.5 SFT -> normal-init e2e eval (gpu_scheduler.py)
 note collection start
-OUT=$RUNS/collect_v1 EPISODE_FILE=$RUNS/lists/collect_train.txt START_GPUS=$GPU PER_GPU=${PER_GPU:-4} \
-  CLAIM_DIR=/dev/shm/alphabot2_claims RUN=$S/run_habitat.sh PILOT=$S/pilot.py \
-  python3 $S/collect_supervisor.py >> $RUNS/logs/supervisor.log 2>&1
-note collection done
+python3 $S/gpu_scheduler.py ${SCHEDULE:-$L/configs/alphabot2_pi05/schedule.json} >> $RUNS/logs/scheduler.log 2>&1
+note collection exited
