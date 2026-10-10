@@ -13,8 +13,10 @@ from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies.factory import make_pre_post_processors
 from lerobot.policies.pi05.modeling_pi05 import PI05Policy
 
-CKPT = "/nix/yanjun/zts/alphabot2/hf/ckpt"
-SPM = "/nix/yanjun/zts/alphabot2/hf/paligemma_tokenizer.model"
+import os
+
+CKPT = os.environ.get("PI05_CKPT", "/workspace/runtime/pi05/ckpt")                 # public AlphaBot pi0.5
+SPM = os.environ.get("PI05_SPM", "/workspace/runtime/pi05/paligemma_tokenizer.model")
 CAMS = ("camera_front", "camera_left", "camera_right", "camera_top")
 
 

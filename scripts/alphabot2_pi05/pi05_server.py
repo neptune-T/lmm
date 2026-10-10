@@ -10,50 +10,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pi05_runtime import Pi05Runtime  # noqa: E402
+from wire import _dec, _enc, recv_msg, send_msg  # noqa: E402,F401
 
 PORT = int(os.environ.get("PI05_PORT", "5577"))
-
-
-def _enc(o):
-    """numpy-version-neutral encoding (numpy 2 pickles reference numpy._core)."""
-    if isinstance(o, np.ndarray):
-        return {"__nd__": True, "dtype": o.dtype.str, "shape": o.shape, "data": o.tobytes()}
-    if isinstance(o, dict):
-        return {k: _enc(v) for k, v in o.items()}
-    if isinstance(o, (list, tuple)):
-        return type(o)(_enc(v) for v in o)
-    if isinstance(o, np.generic):
-        return o.item()
-    return o
-
-
-def _dec(o):
-    if isinstance(o, dict):
-        if o.get("__nd__"):
-            return np.frombuffer(o["data"], dtype=np.dtype(o["dtype"])).reshape(o["shape"]).copy()
-        return {k: _dec(v) for k, v in o.items()}
-    if isinstance(o, (list, tuple)):
-        return type(o)(_dec(v) for v in o)
-    return o
-
-
-def recv_msg(conn):
-    head = conn.recv(8, socket.MSG_WAITALL)
-    if len(head) < 8:
-        return None
-    n = struct.unpack("!Q", head)[0]
-    buf = bytearray()
-    while len(buf) < n:
-        chunk = conn.recv(min(1 << 20, n - len(buf)))
-        if not chunk:
-            return None
-        buf.extend(chunk)
-    return _dec(pickle.loads(bytes(buf)))
-
-
-def send_msg(conn, obj):
-    b = pickle.dumps(_enc(obj), protocol=4)
-    conn.sendall(struct.pack("!Q", len(b)) + b)
 
 
 def main():

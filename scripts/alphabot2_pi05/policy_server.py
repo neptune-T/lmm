@@ -27,7 +27,7 @@ from lerobot.configs.policies import PreTrainedConfig  # noqa: E402
 from lerobot.policies.factory import make_pre_post_processors  # noqa: E402
 from lerobot.policies.pi05.modeling_pi05 import PI05Policy  # noqa: E402
 
-CAMS = ("camera_front", "camera_left", "camera_right", "camera_top")
+CAMS = ("camera_front", "camera_left", "camera_right", "camera_top")   # public 4-camera checkpoint (Isaac stage)
 
 
 class Server:
@@ -44,6 +44,8 @@ class Server:
             preprocessor_overrides={"tokenizer_processor": {"tokenizer": SentencePieceTokenizer(SPM)},
                                     "device_processor": {"device": device}})
         self.adim = int(cfg.output_features["action"].shape[0])
+        # cameras from the checkpoint's own config (the OVMM model has 3: camera_top/left/right)
+        self.cams = tuple(k.split(".")[-1] for k in cfg.image_features)
         self.device = device
         self.q: queue.Queue = queue.Queue()
         self.n_served = 0
@@ -54,7 +56,7 @@ class Server:
         B = len(reqs)
         batch = {"observation.state": torch.as_tensor(np.stack([np.asarray(r["state"], np.float32) for r in reqs])),
                  "task": [r["task"] for r in reqs]}
-        for c in CAMS:
+        for c in self.cams:
             im = torch.as_tensor(np.stack([np.ascontiguousarray(r["images"][c]) for r in reqs]))
             batch[f"observation.images.{c}"] = im.permute(0, 3, 1, 2).float() / 255.0
         noise = torch.stack([torch.randn(self.cfg.chunk_size, self.cfg.max_action_dim,
@@ -100,7 +102,7 @@ class Server:
                     return
                 cmd = msg.get("cmd")
                 if cmd == "ping":
-                    send_msg(conn, {"ok": True, "action_dim": self.adim, "n_served": self.n_served, "gpu_s": self.gpu_s})
+                    send_msg(conn, {"ok": True, "action_dim": self.adim, "cams": list(self.cams), "n_served": self.n_served, "gpu_s": self.gpu_s})
                 elif cmd == "infer":
                     msg["_t_in"] = time.time()
                     box: queue.Queue = queue.Queue(maxsize=1)
@@ -119,7 +121,7 @@ def main():
     ap.add_argument("--dtype", default="bfloat16")
     args = ap.parse_args()
     s = Server(args.ckpt, dtype=args.dtype)
-    dummy = {"images": {k: np.zeros((240, 320, 3), np.uint8) for k in CAMS}, "state": np.zeros(16), "task": "warmup", "seed": 0}
+    dummy = {"images": {k: np.zeros((240, 320, 3), np.uint8) for k in s.cams}, "state": np.zeros(16), "task": "warmup", "seed": 0}
     for n in (1, 2):
         s.infer_batch([dummy] * n)
     threading.Thread(target=s.gpu_loop, args=(args.max_batch, args.batch_wait_ms / 1000), daemon=True).start()
