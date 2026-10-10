@@ -29,3 +29,4 @@ except Exception:
 PY
 echo "--- GPUs"; nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader
 echo "--- pi0.5 env build"; tail -n 1 /workspace/runtime/logs/build_pi05_env.log 2>/dev/null | cut -c1-160
+echo "--- HF backup"; python3 -c "import json; s=json.load(open(\"$R/hf_backup_state.json\")); print(s.get(\"last_ok\"), s.get(\"last_error\"), len(s.get(\"once\", [])), \"one-time uploads\")" 2>/dev/null
