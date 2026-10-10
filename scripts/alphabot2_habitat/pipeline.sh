@@ -16,9 +16,17 @@ gate() {   # gate NAME ARGS...
   echo "$out" >> $ST
   if echo "$out" | grep -q '"pass": true'; then note $name PASS; else note $name BLOCKED; exit 1; fi
 }
-par() {    # par N LOGNAME ENV... SCRIPT : N parallel shards (WORKER/NWORKERS), wait for all
+par() {    # par N LOGNAME ENV... SCRIPT : N parallel shards (WORKER/NWORKERS), wait for all;
+           # with GPUS=a,b,c the shards are spread round-robin over those GPUs (overrides GPU=)
   local n=$1 log=$2; shift 2
-  for w in $(seq 0 $((n - 1))); do env WORKER=$w NWORKERS=$n "$@" > $RUNS/logs/${log}_w$w.log 2>&1 & done; wait
+  local gl=(${GPUS//,/ })
+  for w in $(seq 0 $((n - 1))); do
+    local args=()
+    for x in "$@"; do
+      if [ ${#gl[@]} -gt 0 ] && [[ $x == GPU=* ]]; then args+=("GPU=${gl[$((w % ${#gl[@]}))]}"); else args+=("$x"); fi
+    done
+    env WORKER=$w NWORKERS=$n "${args[@]}" > $RUNS/logs/${log}_w$w.log 2>&1 &
+  done; wait
 }
 
 # 1. full geometric feasibility re-screen: train 6331 / val 133 / 38 of 38 train scenes

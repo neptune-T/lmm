@@ -31,7 +31,15 @@ rows = [r for r in json.load(open(os.environ["SCREEN"])) if r["feasible"]]
 scenes = sorted({r["scene"] for r in rows})[WK::NW]                    # shard by scene: one scene load each
 todo = [r for r in sorted(rows, key=lambda r: (r["scene"], int(r["episode_id"]))) if r["scene"] in scenes]
 fn = f"{OUT}/emb_w{WK:02d}.jsonl"
-done = {json.loads(l)["episode_id"] for l in open(fn) if l.strip()} if os.path.exists(fn) else set()
+done = set()                              # resume across re-sharding: anything any worker already screened
+for i in range(64):                        # (explicit names: bosfs directory listings lag)
+    g = f"{OUT}/emb_w{i:02d}.jsonl"
+    if os.path.exists(g):
+        for l in open(g):
+            try:
+                done.add(json.loads(l)["episode_id"])
+            except (ValueError, KeyError):
+                pass
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=os.environ.get("SPLIT", "train"))
 
 
