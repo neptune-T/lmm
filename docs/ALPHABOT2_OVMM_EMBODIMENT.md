@@ -99,6 +99,12 @@ which equals `base_link` at torso 0. At this posture A is a pure translation of 
   | 0.42 | 13 | 8 | 8 | 0 |
   | 0.46 | 17 | 7 | 7 | 0 |
 
+  These rows were measured with navmesh agent height 1.7 m. Re-run on the 2026-10 host at the same
+  settings the 0.38 row reproduces exactly (7 unreachable, 12 arrived). With the mainline height
+  **1.5 m** (crouched robot 1.434 m) the same 24 episodes give **5** unreachable at reset (10, 1075,
+  1086, 727, 743 — a subset of the 1.7 m set; 459 and 480 become reachable), 14 with both legs arrived
+  and collision-free (crouched torso, current follower). The pipeline's navmesh gate checks both.
+
 * Follower: Detour shortest paths hug the navmesh edge. OVMM's `allow_sliding: False` filter
   stopped the base dead when it grazed that edge (measured: blocked after about 1 m). The
   AlphaBot base slides along the edge instead, which already keeps the chassis radius from real

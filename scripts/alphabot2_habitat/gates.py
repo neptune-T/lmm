@@ -46,14 +46,27 @@ if kind == "screen":
     emit("screen", ok, train=flat(t), val=flat(v), committed={s: flat(old[s]) for s in ("train", "val")})
 
 if kind == "navmesh":
+    # gates.py navmesh DOC_SETTINGS_DIR MAINLINE_DIR
+    # 1) the documented audit (docs/ALPHABOT2_OVMM_EMBODIMENT.md §5, radius 0.38 row) was measured with
+    #    navmesh height 1.7: rerun at r0.38/h1.7 it must reproduce 24 episodes / 7 goals unreachable at reset;
+    # 2) mainline config (r0.38/h1.5, robot 1.434 m tall): its unreachable set must be a subset of (1)'s
+    #    (a lower agent height can only open the navmesh); counts are recorded as the new reference.
+    import glob as _g
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from summarize_nav import summarize
-    s = summarize(sys.argv[2])
-    # docs/ALPHABOT2_OVMM_EMBODIMENT.md §5, radius 0.38 row: 24 val episodes, 7 goals unreachable at reset
-    # (arrival/collision counts there were measured at torso 0 with an earlier follower: reported only)
-    ok = s["episodes"] == 24 and s["reset_goals_unreachable"] == 7 and not s["other_errors"]
-    emit("navmesh", ok, measured=s, documented={"episodes": 24, "reset_goals_unreachable": 7,
-                                                "both_legs_arrived": 12, "both_legs_collision_free": 11})
+
+    def unreachable(d):
+        return sorted({json.loads(l)["episode_id"] for f in _g.glob(f"{d}/results_w*.jsonl") for l in open(f)
+                       if "None of the goals" in (json.loads(l).get("engineering_error") or "")})
+    doc, main = summarize(sys.argv[2]), summarize(sys.argv[3])
+    ud, um = unreachable(sys.argv[2]), unreachable(sys.argv[3])
+    ok = (doc["episodes"] == 24 and doc["reset_goals_unreachable"] == 7 and not doc["other_errors"]
+          and main["episodes"] == 24 and not main["other_errors"] and set(um) <= set(ud))
+    pick = lambda s: {k: s[k] for k in ("episodes", "scenes", "reset_goals_unreachable", "both_legs_arrived",
+                                        "both_legs_collision_free")}
+    emit("navmesh", ok, documented_settings_r038_h17=pick(doc), unreachable_h17=ud,
+         mainline_r038_h15=pick(main), unreachable_h15=um,
+         documented={"episodes": 24, "reset_goals_unreachable": 7, "both_legs_arrived": 12, "both_legs_collision_free": 11})
 
 if kind == "smoke":
     r = json.load(open(sys.argv[2]))

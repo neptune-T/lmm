@@ -26,10 +26,16 @@ passed screen || { note screen start
   CUDA_VISIBLE_DEVICES=$GPU SPLITS=train,val OUT=$RUNS/feasibility $RUN $S/feasibility_screen.py > $RUNS/logs/screen.log 2>&1
   gate screen $RUNS/feasibility/summary.json $L/artifacts/alphabot2_habitat/feasibility_summary.json; }
 
-# 2. navmesh regression: the documented radius-0.38 val audit (nav_qual defaults: 2 episodes x first 15 scenes)
-passed navmesh || { note navmesh start; rm -rf $RUNS/nav_audit
-  par 4 nav_audit GPU=$GPU SPLIT=val OUT=$RUNS/nav_audit $RUN $S/nav_qual.py
-  gate navmesh $RUNS/nav_audit; }
+# 2. navmesh regression: the documented radius-0.38 val audit (nav_qual defaults: 2 episodes x first 15 scenes),
+#    once at the documented settings (r0.38, height 1.7: must reproduce it) and once at the mainline config
+passed navmesh || { note navmesh start
+  [ -f $RUNS/nav_audit_h17/.done ] || { rm -rf $RUNS/nav_audit_h17
+    par 4 nav_audit_h17 GPU=$GPU SPLIT=val NAV_HEIGHT=1.7 ALPHABOT2_NAVMESH_TAG=alphabot2_r038_h17 OUT=$RUNS/nav_audit_h17 $RUN $S/nav_qual.py
+    touch $RUNS/nav_audit_h17/.done; }
+  [ -f $RUNS/nav_audit/.done ] || { rm -rf $RUNS/nav_audit
+    par 4 nav_audit GPU=$GPU SPLIT=val OUT=$RUNS/nav_audit $RUN $S/nav_qual.py
+    touch $RUNS/nav_audit/.done; }
+  gate navmesh $RUNS/nav_audit_h17 $RUNS/nav_audit; }
 
 # 3. runtime smoke on one episode the audit found reachable (both legs arrived)
 passed smoke || { note smoke start
