@@ -14,9 +14,18 @@ from collections import defaultdict
 import numpy as np
 
 
+def files(d, pat="results*.jsonl"):
+    """glob + explicit probing of the names our writers use: bosfs directory listings lag behind file
+    creation (stat/open see a new file, readdir may not for a while)."""
+    stem = pat.split("*")[0]
+    names = [f"{stem}.jsonl", f"{stem}_left.jsonl", f"{stem}_right.jsonl"] + \
+            [f"{stem}_w{i:02d}.jsonl" for i in range(100)] + [f"{stem}{i:02d}.jsonl" for i in range(100)]
+    return sorted(set(glob.glob(f"{d}/{pat}")) | {f"{d}/{n}" for n in names if os.path.exists(f"{d}/{n}")})
+
+
 def rows(d, pat="results*.jsonl"):
     out = []
-    for f in sorted(glob.glob(f"{d}/{pat}")):
+    for f in files(d, pat):
         for line in open(f):
             try:
                 out.append(json.loads(line))
@@ -75,7 +84,7 @@ if kind == "embodiment":
     # units (episode, replica): geometry AND reset-reachable AND some arm pick-feasible AND place-feasible.
     from collections import Counter
     er = {}
-    for f in glob.glob(f"{sys.argv[2]}/emb_w*.jsonl"):
+    for f in files(sys.argv[2], "emb_w*.jsonl"):
         for l in open(f):
             r = json.loads(l)
             er[r["episode_id"]] = r

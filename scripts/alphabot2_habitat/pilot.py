@@ -48,7 +48,8 @@ else:
     EPS = os.environ["EPISODES"].split(",")
 EPS = EPS[WK::NW]
 DONE = set()
-for f in glob.glob(f"{OUT}/results*.jsonl"):
+for f in sorted(n for n in set(glob.glob(f"{OUT}/results*.jsonl")) | {f"{OUT}/results_w{i:02d}.jsonl" for i in range(100)}
+               if os.path.exists(n)):                     # bosfs readdir lags: probe worker files too
     for line in open(f):
         try:
             DONE.add(str(json.loads(line)["episode_id"]))

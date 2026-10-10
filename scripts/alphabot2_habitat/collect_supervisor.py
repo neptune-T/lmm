@@ -44,7 +44,9 @@ def gpus():
 
 def results():
     rs = {}
-    for f in glob.glob(f"{OUT}/results*.jsonl"):
+    # glob + explicit worker files (bosfs readdir lags behind file creation)
+    names = set(glob.glob(f"{OUT}/results*.jsonl")) | {f"{OUT}/results_w{i:02d}.jsonl" for i in range(100)}
+    for f in sorted(n for n in names if os.path.exists(n)):
         for line in open(f):
             try:
                 r = json.loads(line)

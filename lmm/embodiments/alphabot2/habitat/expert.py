@@ -228,15 +228,22 @@ class OVMMExpert:
         tgt = mn.Vector3(float(target_hab[0]), floor_y, float(target_hab[2]))
         sgn = 1.0 if side == "left" else -1.0
         out, seen, misses = [], set(), 0
+        # existence is decided exactly, not by sampling luck: the nearest navigable point on the robot's
+        # island must lie within the arm's planar reach of the target
+        snap = np.array(pf.snap_point(tgt, island))
+        self.last_nearest_navigable_m = (float(np.hypot(snap[0] - target_hab[0], snap[2] - target_hab[2]))
+                                         if np.isfinite(snap).all() else None)
+        if self.last_nearest_navigable_m is None or self.last_nearest_navigable_m > R_MAX:
+            return out
         pf.seed(int(self.rng.integers(1 << 30)))
+        pts = [snap]
         for _ in range(n):
-            p = pf.get_random_navigable_point_near(tgt, R_MAX, 20, island)
-            p = np.array(p)
+            p = np.array(pf.get_random_navigable_point_near(tgt, R_MAX, 100, island))
             if not np.isfinite(p).all():
                 misses += 1
-                if misses >= 8 and not out:          # nothing navigable around the target on this island
-                    break
                 continue
+            pts.append(p)
+        for p in pts:
             d = np.array([target_hab[0] - p[0], target_hab[2] - p[2]])
             r = float(np.linalg.norm(d))
             if r < R_MIN or r > R_MAX:                    # object within the crouched arm's forward reach
@@ -332,7 +339,8 @@ class OVMMExpert:
         centre, ext, R_obj, half = self.object_geometry(obj)
         cands = self.standoff_candidates(centre, side)
         floor_y = float(self.rob.sim_obj.translation[1])
-        diag = {"object_height_above_floor_m": round(float(centre[1] - floor_y), 3),
+        diag = {"nearest_navigable_m": self.last_nearest_navigable_m,
+                "object_height_above_floor_m": round(float(centre[1] - floor_y), 3),
                 "object_extent_local_m": (2 * half).round(3).tolist(), "candidates_navigable": len(cands),
                 "reachable": 0, "grasp_options": 0, "ik_ok": 0, "sample_obj_arm": None}
         self.log.setdefault("pick_diag", {})[side] = diag
