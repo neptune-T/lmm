@@ -38,19 +38,35 @@ def make_env(gpu: int = 0, overrides: list | None = None, split: str | None = No
     return env
 
 
-def episode_seed(episode_id) -> int:
-    """Per-episode seed for OVMM's own start sampling (stable across processes and hosts)."""
+def episode_seed(episode_id, replica: int = 0) -> int:
+    """Seed bank for OVMM's own start sampling: one deterministic seed per (episode_id, replica_id),
+    stable across processes and hosts. Replica 0 keeps the original per-episode seed."""
     import zlib
-    return zlib.crc32(f"alphabot2-ovmm:{episode_id}".encode()) & 0x7FFFFFFF
+    key = f"alphabot2-ovmm:{episode_id}" if int(replica) == 0 else f"alphabot2-ovmm:{episode_id}:{int(replica)}"
+    return zlib.crc32(key.encode()) & 0x7FFFFFFF
 
 
-def reset_to(env, episode_id):
+def parse_unit(unit) -> tuple[str, int]:
+    """Collection unit id "EPISODE#REPLICA" (or a bare episode id = replica 0)."""
+    s = str(unit)
+    if "#" in s:
+        e, r = s.split("#", 1)
+        return e, int(r)
+    return s, 0
+
+
+def unit_id(episode_id, replica: int = 0) -> str:
+    return f"{episode_id}#{int(replica)}"
+
+
+def reset_to(env, episode_id, replica: int = 0):
     """Reset into one specific OVMM episode, deserialized exactly as the stock iterator does.
 
     OVMM TRAIN episodes carry no start pose (all 37,477 are zero): OVMM samples one at every reset
     (random navigable point on the active island + random yaw + random goal). That sampler is kept,
     but seeded per episode (python/numpy/sim pathfinder/task via env.seed) so a fresh reset of the
-    same episode is identical -- needed for fresh-reset replay. VAL episodes have fixed starts."""
+    same episode is identical -- needed for fresh-reset replay. ``replica`` selects another seed from
+    the (episode_id, replica_id) bank, i.e. another OVMM-sampled start. VAL episodes have fixed starts."""
     from habitat.datasets.ovmm.ovmm_dataset import OVMMEpisodeIterator
     it0 = env._alphabot2_iter0
     env.episode_iterator = OVMMEpisodeIterator(it0.viewpoints, it0.transformations,
@@ -60,13 +76,13 @@ def reset_to(env, episode_id):
     # later reset of the same episode. Load the scene with a throw-away reset first, then seed + reset.
     scene = env._alphabot2_raw[str(episode_id)].scene_id
     if getattr(env, "_alphabot2_scene", None) != scene:
-        env.seed(episode_seed(episode_id))
+        env.seed(episode_seed(episode_id, replica))
         try:
             env.reset()
         except AssertionError:                    # OVMM's reachability assert: the real reset decides
             pass
         env._alphabot2_scene = scene
-    env.seed(episode_seed(episode_id))
+    env.seed(episode_seed(episode_id, replica))
     return env.reset()
 
 

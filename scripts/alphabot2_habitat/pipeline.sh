@@ -37,11 +37,12 @@ passed navmesh || { note navmesh start
     touch $RUNS/nav_audit/.done; }
   gate navmesh $RUNS/nav_audit_h17 $RUNS/nav_audit; }
 
-# 2b. navmesh reachability screen of every geometry-feasible TRAIN episode (seeded OVMM reset);
-#     episode lists below come from geometry AND reachable-at-reset (reported separately from full OVMM)
-passed reach || { note reach start
-  par 4 reach SCREEN=$RUNS/feasibility/screen_train.json GPU=$GPU SPLIT=train OUT=$RUNS/reach $RUN $S/reach_screen.py
-  gate reach $RUNS/reach $RUNS/feasibility/screen_train.json $RUNS/feasibility/screen_train_reach.json
+# 2b. deterministic embodiment feasibility of every geometry-feasible TRAIN episode (no outcomes):
+#     seeded reset reachability per seed-bank replica, pick + place feasibility per arm (navmesh,
+#     reach band, aperture along the actual closing axis, IK). Units = (episode, replica).
+passed embodiment || { note embodiment start
+  par ${EMB_WORKERS:-6} emb SCREEN=$RUNS/feasibility/screen_train.json REPLICAS=${REPLICAS:-3} GPU=$GPU SPLIT=train OUT=$RUNS/emb $RUN $S/emb_screen.py
+  gate embodiment $RUNS/emb $RUNS/feasibility/screen_train.json $RUNS/feasibility/units_train.json
   rm -rf $RUNS/lists/*; }
 
 # 3. runtime smoke on one episode the audit found reachable (both legs arrived)
@@ -57,23 +58,52 @@ for f in sorted(glob.glob('$RUNS/nav_audit/results_w*.jsonl')):
   GPU=$GPU SPLIT=val SMOKE_EPISODE=$SE SMOKE_OUT=$RUNS/smoke $RUN $S/smoke.py > $RUNS/logs/smoke.log 2>&1
   gate smoke $RUNS/smoke/smoke.json; }
 
-# 4. episode lists from geometry AND reachability (scene round-robin): qualification 10, pilot candidates, all feasible TRAIN
-P=$S/pick_episodes.py
+# 4. lists from the AlphaBot-feasible TRAIN units only (scene round-robin, object diversity):
+#    qualification (replica 0): 5 left-feasible, 5 right-feasible, 8 for auto; 40 pilot candidates;
+#    collection: every replica-0 unit (pilot first), then replica 1, then 2, ...
 [ -s $RUNS/lists/collect_train.txt ] || python3 - <<PY
-import subprocess
-pick = lambda n, seed: subprocess.check_output(["python3", "$P", "$RUNS/feasibility/screen_train_reach.json", str(n), str(seed)], text=True).strip().split(",")
-q = pick(10, 1)
-pilot = [e for e in pick(80, 2) if e not in q][:40]
-rest = [e for e in pick(1000000, 0) if e not in q and e not in pilot]
-open("$RUNS/lists/qual_train.txt", "w").write(",".join(q))
-open("$RUNS/lists/pilot_candidates.txt", "w").write(",".join(pilot))
-open("$RUNS/lists/collect_train.txt", "w").write("\n".join(pilot + rest) + "\n")
-print("LISTS", len(q), len(pilot), len(pilot + rest))
+import json, random
+from collections import defaultdict
+U = json.load(open("$RUNS/feasibility/units_train.json"))
+def rr(pool, n, seed):
+    rnd = random.Random(seed); by = defaultdict(list)
+    for u in pool: by[u["scene"]].append(u)
+    for v in by.values(): rnd.shuffle(v)
+    scenes = sorted(by); rnd.shuffle(scenes); out, used = [], set()
+    while len(out) < n and any(by.values()):
+        for sc in scenes:
+            if by[sc] and len(out) < n:
+                pick = next((u for u in by[sc] if u["object"] not in used), by[sc][0])
+                by[sc].remove(pick); used.add(pick["object"]); out.append(pick)
+    return out
+r0 = [u for u in U if u["replica"] == 0]
+taken = set()
+def take(pool, n, seed):
+    out = rr([u for u in pool if u["episode_id"] not in taken], n, seed)
+    taken.update(u["episode_id"] for u in out); return out
+ql = take([u for u in r0 if "left" in u["feasible_arms"]], 5, 1)
+qr = take([u for u in r0 if "right" in u["feasible_arms"]], 5, 2)
+qa = take(r0, 8, 3)
+pilot = take(r0, 40, 4)
+order = [u["unit"] for u in pilot]
+for rep in sorted({u["replica"] for u in U}):
+    order += [u["unit"] for u in rr([u for u in U if u["replica"] == rep and u["unit"] not in set(order)], 10**9, 10 + rep)]
+w = lambda name, xs: open(f"$RUNS/lists/{name}", "w").write(xs)
+w("qual_left.txt", ",".join(u["episode_id"] for u in ql)); w("qual_right.txt", ",".join(u["episode_id"] for u in qr))
+w("qual_auto.txt", ",".join(u["episode_id"] for u in qa)); w("pilot_candidates.txt", ",".join(u["unit"] for u in pilot))
+w("collect_train.txt", "\\n".join(order) + "\\n")
+print("LISTS left", len(ql), "right", len(qr), "auto", len(qa), "pilot", len(pilot), "collect_units", len(order))
 PY
 
-# 5. manipulation qualification on feasible TRAIN episodes: forced-left, forced-right, auto
+# 5. manipulation qualification on AlphaBot-feasible TRAIN units: forced-left on left-feasible,
+#    forced-right on right-feasible, auto on any feasible; gate: >=1 / >=1 / >=3 complete successes
 passed manip || { note manip start; rm -rf $RUNS/manip_qual
-  par 3 manip GPU=$GPU SPLIT=train MODES=left,right,auto EPISODES=$(cat $RUNS/lists/qual_train.txt) OUT=$RUNS/manip_qual $RUN $S/manip_qual.py
+  for m in left right; do
+    GPU=$GPU SPLIT=train MODES=$m RESULTS_TAG=$m EPISODES=$(cat $RUNS/lists/qual_$m.txt) OUT=$RUNS/manip_qual \
+      $RUN $S/manip_qual.py > $RUNS/logs/manip_$m.log 2>&1 &
+  done
+  par 2 manip_auto GPU=$GPU SPLIT=train MODES=auto EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/manip_qual $RUN $S/manip_qual.py
+  wait
   gate manip $RUNS/manip_qual; }
 
 # 6. snapshot/restore (tolerance gate) on the auto successes
@@ -96,7 +126,7 @@ print(','.join(ok[:4]))")
     ALPHABOT2_DEPS=$R/deps $RUN -m lmm.embodiments.alphabot2.habitat.build_urdf $R/alphabot2_assets/head_p$p --head-pitch $p >> $RUNS/logs/camera.log 2>&1 || true
     V="$V${V:+,}p$p:$R/alphabot2_assets/head_p$p/alphabot2.urdf"
   done
-  GPU=$GPU SPLIT=train HEAD_URDFS=$V EPISODES=$(cat $RUNS/lists/qual_train.txt) OUT=$RUNS/camera_sweep $RUN $S/camera_sweep.py >> $RUNS/logs/camera.log 2>&1
+  GPU=$GPU SPLIT=train HEAD_URDFS=$V EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/camera_sweep $RUN $S/camera_sweep.py >> $RUNS/logs/camera.log 2>&1
   note camera "done_$( [ -s $RUNS/camera_sweep/camera_sweep.json ] && echo ok || echo failed)"; }
 
 # 8. pilot: 10-20 complete successful trajectories, fresh-reset replay, timing, leakage, both arms, >1 scene

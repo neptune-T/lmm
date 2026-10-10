@@ -14,7 +14,8 @@ Replay: reset_to(episode) + the same start fix, the recorded joint18 sequence
 re-executed; per-step proprio / base / object / held-object comparison and OVMM success.
 
 The same script is the continuous collector (one code path for pilot and scale):
-  EPISODES=a,b,c | EPISODE_FILE=ids.txt   episode order (one id per line or comma separated)
+  EPISODES=a,b,c | EPISODE_FILE=ids.txt   unit order: "EPISODE#REPLICA" (seed-bank replica; bare id = #0),
+                                          one per line or comma separated
   WORKER/NWORKERS                         shard of the order (one Habitat process per shard)
   MAX_OK                                  stop after this many accepted episodes (default unlimited)
   ARM_MODE=auto|left|right                auto = arm chosen by geometry (default)
@@ -127,15 +128,19 @@ for eid in EPS:
     if not claim(eid):
         continue
     t0 = time.time()
-    rec = {"episode_id": eid, "worker": WK, "arm_mode": ARM_MODE}
+    ep_id, rep = HE.parse_unit(eid)
+    rec = {"episode_id": eid, "episode": ep_id, "replica": rep, "seed": HE.episode_seed(ep_id, rep),
+           "worker": WK, "arm_mode": ARM_MODE}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
            "state": []}
     try:
-        HE.reset_to(env, eid)
+        HE.reset_to(env, ep_id, rep)
         ep = env.current_episode
         rec.update({"scene": ep.scene_id.split("/")[-1].split(".")[0], "object": ep.object_category,
                     "start_recep": ep.start_recep_category, "goal_recep": ep.goal_recep_category,
                     "instruction": instruction(ep)})
+        rob0 = HE.robot(env).sim_obj.translation
+        rec["start_pose"] = [float(rob0[0]), float(rob0[1]), float(rob0[2]), float(HE.robot(env).base_rot)]
         rec["start_fix"] = HE.fix_start(env)
         orig = HE.step18
         pending = {}
@@ -179,7 +184,7 @@ for eid in EPS:
             rec["base_travel_after_grasp_m"] = float(np.sum(np.linalg.norm(np.diff(base[t_grasp:], axis=0), axis=1)))
             # ---- replay validation
             t1 = time.time()
-            HE.reset_to(env, eid)
+            HE.reset_to(env, ep_id, rep)
             fix2 = HE.fix_start(env)
             rep_states = []
             for a in buf["joint18"]:
@@ -194,7 +199,8 @@ for eid in EPS:
                              "place_success": metrics().get("ovmm_place_success"), "wall_s": round(time.time() - t1, 1)}
             rec["accepted"] = bool(rec["replay"]["place_success"] and rec["replay"]["held_equal_all"]
                                    and rec["replay"]["proprio_max_abs"] < 1e-6 and rec["replay"]["root_max_abs"] < 1e-6)
-            d_ep = f"{OUT}/episodes/{eid}"
+            d_ep = f"{OUT}/episodes/{str(eid).replace('#', '_r')}"
+            rec["dir"] = d_ep
             os.makedirs(d_ep, exist_ok=True)
             np.savez_compressed(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
             np.savez_compressed(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
@@ -206,6 +212,7 @@ for eid in EPS:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],
                            "metadata_only": ["stage", "events", "arm", "plans", "ovmm", "grasp_events"]},
                           f, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+            rec["bytes"] = sum(os.path.getsize(f"{d_ep}/{x}") for x in os.listdir(d_ep))
             n_ok += int(rec["accepted"])
     except Exception as e:
         rec["engineering_error"] = repr(e)

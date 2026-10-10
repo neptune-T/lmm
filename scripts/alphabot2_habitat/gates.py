@@ -68,31 +68,47 @@ if kind == "navmesh":
          mainline_r038_h15=pick(main), unreachable_h15=um,
          documented={"episodes": 24, "reset_goals_unreachable": 7, "both_legs_arrived": 12, "both_legs_collision_free": 11})
 
-if kind == "reach":
-    # gates.py reach REACH_DIR GEOMETRIC_SCREEN_JSON MERGED_OUT_JSON
-    # Measurement, not a ratio gate: every geometrically feasible episode screened, no engineering errors,
-    # seeded resets deterministic. Writes the merged screen (feasible = geometry AND reachable at reset).
-    rr = {}
-    for f in glob.glob(f"{sys.argv[2]}/reach_w*.jsonl"):
+if kind == "embodiment":
+    # gates.py embodiment EMB_DIR GEOMETRIC_SCREEN_JSON UNITS_OUT_JSON
+    # Measurement + completeness/determinism gate (no outcome filtering, no ratio): every geometry-feasible
+    # episode screened, no engineering errors, seeded resets deterministic. Writes the AlphaBot-feasible
+    # units (episode, replica): geometry AND reset-reachable AND some arm pick-feasible AND place-feasible.
+    from collections import Counter
+    er = {}
+    for f in glob.glob(f"{sys.argv[2]}/emb_w*.jsonl"):
         for l in open(f):
             r = json.loads(l)
-            rr[r["episode_id"]] = r
+            er[r["episode_id"]] = r
     geo = json.load(open(sys.argv[3]))
     gf = [r for r in geo if r["feasible"]]
-    missing = [r["episode_id"] for r in gf if r["episode_id"] not in rr]
-    eng = [k for k, r in rr.items() if r.get("engineering_error")]
-    nondet = [k for k, r in rr.items() if r.get("repeat_start_pose_equal") is False]
-    checked = sum(1 for r in rr.values() if "repeat_start_pose_equal" in r)
-    merged = [dict(r, geometric_feasible=r["feasible"],
-                   reachable=bool(rr.get(r["episode_id"], {}).get("reachable")),
-                   feasible=bool(r["feasible"] and rr.get(r["episode_id"], {}).get("reachable"))) for r in geo]
-    json.dump(merged, open(sys.argv[4], "w"))
-    sub = [r for r in merged if r["feasible"]]
-    emit("reach", not missing and not eng and not nondet and checked > 0,
-         full_ovmm_episodes=len(geo), full_ovmm_scenes=len({r["scene"] for r in geo}),
-         geometric_feasible=len(gf), geometric_feasible_scenes=len({r["scene"] for r in gf}),
-         reachable_subset=len(sub), reachable_subset_scenes=len({r["scene"] for r in sub}),
-         reachable_subset_objects=len({r["object"] for r in sub}),
+    missing = [r["episode_id"] for r in gf if r["episode_id"] not in er]
+    eng = [k for k, r in er.items() if r.get("engineering_error")]
+    reps = [u for r in er.values() for u in r.get("replicas", [])]
+    nondet = [(k, u["replica"]) for k, r in er.items() for u in r.get("replicas", []) if u.get("repeat_start_pose_equal") is False]
+    checked = sum(1 for u in reps if "repeat_start_pose_equal" in u)
+    units = []
+    for r in er.values():
+        for u in r.get("replicas", []):
+            if u.get("reachable") and r.get("feasible_arms"):
+                units.append({"unit": f"{r['episode_id']}#{u['replica']}", "episode_id": r["episode_id"],
+                              "replica": u["replica"], "scene": r["scene"], "object": r.get("object"),
+                              "feasible_arms": r["feasible_arms"]})
+    json.dump(units, open(sys.argv[4], "w"))
+    ok_ep = [r for r in er.values() if not r.get("engineering_error")]
+    reach_ep = [r for r in ok_ep if any(u.get("reachable") for u in r["replicas"])]
+    arm = lambda side, key: sum(1 for r in reach_ep if r["arms"].get(side, {}).get(key))
+    both = lambda side: sum(1 for r in reach_ep if side in r.get("feasible_arms", []))
+    feas_ep = [r for r in reach_ep if r.get("feasible_arms")]
+    emit("embodiment", not missing and not eng and not nondet and checked > 0,
+         funnel_episodes={"full_ovmm_train": len(geo), "geometry_feasible": len(gf), "reset_reachable_any_replica": len(reach_ep),
+                          "pick_feasible_left": arm("left", "pick"), "pick_feasible_right": arm("right", "pick"),
+                          "pick_and_place_left": both("left"), "pick_and_place_right": both("right"),
+                          "alphabot_feasible": len(feas_ep)},
+         scenes={"full_ovmm_train": len({r["scene"] for r in geo}), "geometry_feasible": len({r["scene"] for r in gf}),
+                 "alphabot_feasible": len({r["scene"] for r in feas_ep})},
+         objects_alphabot_feasible=len({r.get("object") for r in feas_ep}),
+         feasible_arm_sets=dict(Counter("+".join(sorted(r["feasible_arms"])) for r in feas_ep)),
+         replicas_reachable=f"{sum(1 for u in reps if u.get('reachable'))}/{len(reps)}", units=len(units),
          missing=missing[:10], engineering_errors=eng[:10], determinism_checked=checked, nondeterministic=nondet[:10])
 
 if kind == "smoke":
@@ -163,7 +179,7 @@ if kind == "pilot":
     ARM_WORDS = re.compile(r"\b(left|right|arm|hand|gripper|stage|grasp)\b", re.I)
     per, bad = [], []
     for r in succ:
-        eid, d = str(r["episode_id"]), f"{out_dir}/episodes/{r['episode_id']}"
+        eid, d = str(r["episode_id"]), r.get("dir") or f"{out_dir}/episodes/{r['episode_id']}"
         c = {"replay_fresh_reset": bool(r.get("accepted")) and bool(r["replay"].get("start_fix_equal"))}
         try:
             im, lo = np.load(f"{d}/images.npz"), np.load(f"{d}/lowdim.npz")

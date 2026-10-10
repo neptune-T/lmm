@@ -7,7 +7,7 @@ episode in EPISODE_FILE has a results row. Writes OUT/supervisor_status.json.
 
     OUT=... EPISODE_FILE=... START_GPUS=3 PER_GPU=4 python3 collect_supervisor.py
 """
-import glob, json, os, subprocess, time
+import glob, json, os, re, subprocess, time
 from collections import Counter
 
 OUT, EPF = os.environ["OUT"], os.environ["EPISODE_FILE"]
@@ -22,6 +22,18 @@ os.makedirs(LOGS, exist_ok=True)
 eps = open(EPF).read().replace(",", "\n").split()
 owned = [int(g) for g in os.environ.get("START_GPUS", "").split(",") if g != ""]
 procs = {}                                                     # (gpu, slot) -> Popen
+hist = []                                                      # (time, accepted) for the hourly rate
+
+
+def reason(r):
+    if r.get("engineering_error"):
+        return "engineering: " + r["engineering_error"].split("(")[0][:60]
+    if r.get("success") and not r.get("accepted"):
+        return "success_but_replay_mismatch"
+    f = r.get("failure") or ""
+    f = re.sub(r"\((left|right)\)", "", f).strip()
+    return ("expert: " + f[:80]) if f else ("ovmm_not_success" if r.get("expert_completed") else "unknown")
+
 
 
 def gpus():
@@ -75,7 +87,16 @@ while True:
           "accepted_scenes": len({r.get("scene") for r in acc}),
           "accepted_objects": len({r.get("object") for r in acc}),
           "owned_gpus": owned, "workers_alive": len([p for p in procs.values() if p.poll() is None]),
-          "accepted_steps": sum(int(r.get("steps") or 0) for r in acc)}
+          "accepted_steps": sum(int(r.get("steps") or 0) for r in acc),
+          "accepted_bytes_gb": round(sum(int(r.get("bytes") or 0) for r in acc) / 1e9, 2),
+          "accepted_left_fraction": round(sum(r.get("arm") == "left" for r in acc) / max(1, len(acc)), 3),
+          "accepted_per_hour_last": None,
+          "failure_reasons": dict(Counter(reason(r) for r in rs.values() if not r.get("accepted")).most_common(12)),
+          "accepted_by_replica": dict(Counter(int(r.get("replica") or 0) for r in acc))}
+    hist.append((time.time(), len(acc)))
+    old = [h for h in hist if time.time() - h[0] <= 3600]
+    if len(old) >= 2 and old[-1][0] > old[0][0]:
+        st["accepted_per_hour_last"] = round((old[-1][1] - old[0][1]) * 3600 / (old[-1][0] - old[0][0]), 1)
     json.dump(st, open(f"{OUT}/supervisor_status.json", "w"), indent=1)
     print("STATUS", json.dumps(st), flush=True)
     time.sleep(POLL_S)

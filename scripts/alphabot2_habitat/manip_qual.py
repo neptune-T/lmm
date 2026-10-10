@@ -8,7 +8,7 @@ owning hand, stable transport (still held on arrival at the receptacle), release
 OVMM measures (pick/place phase successes, ovmm_place_success), robot-scene
 collisions during manipulation, IK validity, steps.
 
-    MODES=left,right,auto EPISODES=... OUT=... run_habitat.sh manip_qual.py
+    MODES=left,right,auto EPISODES=... OUT=... [RESULTS_TAG=left] run_habitat.sh manip_qual.py
 """
 import json, os, sys, time, traceback
 from collections import defaultdict
@@ -51,7 +51,7 @@ def metrics():
     return out
 
 
-with open(f"{OUT}/results_w{WK:02d}.jsonl", "a") as fout:
+with open(f"{OUT}/results_{os.environ.get('RESULTS_TAG', f'w{WK:02d}')}.jsonl", "a") as fout:
     for eid in eps:
         for mode in MODES:
             t0 = time.time()
