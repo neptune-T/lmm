@@ -37,7 +37,7 @@ sc.enable_physics = False
 sim = habitat_sim.Simulator(habitat_sim.Configuration(sc, [habitat_sim.agent.AgentConfiguration()]))
 otm = sim.get_object_template_manager()
 for p in cfg.habitat.simulator.additional_object_paths:
-    otm.load_configs(os.path.join("/workspace/runtime/home-robot", p))
+    otm.load_configs(os.path.join(os.getcwd(), p))   # run_habitat.sh runs from the data tree root
 rom = sim.get_rigid_object_manager()
 bbox_cache = {}
 
