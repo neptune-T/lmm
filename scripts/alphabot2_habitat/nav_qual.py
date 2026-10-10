@@ -28,9 +28,11 @@ os.makedirs(OUT, exist_ok=True)
 PER_SCENE = int(os.environ.get("EPISODES_PER_SCENE", "2"))
 MAX_SCENES = int(os.environ.get("MAX_SCENES", "15"))
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
-RADIUS = os.environ.get("NAV_RADIUS")
+RADIUS, HEIGHT = os.environ.get("NAV_RADIUS"), os.environ.get("NAV_HEIGHT")
+# (with either override set ALPHABOT2_NAVMESH_TAG too: the recomputed navmesh is cached per tag)
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=os.environ.get("SPLIT", "val"),
-                  overrides=[f"habitat.simulator.agents.main_agent.radius={RADIUS}"] if RADIUS else [])
+                  overrides=([f"habitat.simulator.agents.main_agent.radius={RADIUS}"] if RADIUS else [])
+                  + ([f"habitat.simulator.agents.main_agent.height={HEIGHT}"] if HEIGHT else []))
 by_scene = defaultdict(list)
 for e in env.episodes:
     by_scene[e.scene_id].append(e.episode_id)
