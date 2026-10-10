@@ -21,7 +21,7 @@ from lmm.embodiments.alphabot2.habitat.alphabot2_robot import HOME, SIDES  # noq
 OUT = os.environ.get("SMOKE_OUT", "/workspace/runtime/runs/smoke")
 os.makedirs(OUT, exist_ok=True)
 R, OK = {}, {}
-env = HE.make_env(gpu=int(os.environ.get("GPU", "0")))
+env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=os.environ.get("SPLIT"))
 rob = None
 
 
@@ -40,19 +40,14 @@ def heading():
 
 # 1 / 2 / 3
 t0 = time.time()
-# first episode (or SMOKE_EPISODE) whose goals are reachable on the AlphaBot navmesh (radius 0.38):
-# OVMM asserts reachability at reset; unreachable episodes are infeasible for this embodiment
-skipped = []
-for e in ([os.environ["SMOKE_EPISODE"]] if os.environ.get("SMOKE_EPISODE") else [x.episode_id for x in env.episodes]):
-    try:
-        obs = HE.reset_to(env, e)
-        break
-    except AssertionError:
-        skipped.append(e)
+# Runtime smoke only, on ONE pinned episode (SMOKE_EPISODE: one the navmesh audit found reachable).
+# Nothing is skipped here: reachability / navmesh regressions are checked by the full feasibility
+# screen and the nav_qual radius audit, never hidden by picking another episode.
+ep_first = os.environ.get("SMOKE_EPISODE") or env.episodes[0].episode_id
+obs = HE.reset_to(env, ep_first)
 rob = HE.robot(env)
 ep0 = env.current_episode.episode_id
 check("01_load", rob is not None and rob.sim_obj.is_alive, episode=ep0, scene=env.current_episode.scene_id,
-      skipped_unreachable=skipped,
       load_reset_s=round(time.time() - t0, 1), movable_joints=len(rob.sim_obj.joint_positions))
 p = rob.proprio16()
 home = np.r_[HOME["left"], 1.0 - 1.0, HOME["right"], 0.0]

@@ -18,6 +18,9 @@ The same script is the continuous collector (one code path for pilot and scale):
   WORKER/NWORKERS                         shard of the order (one Habitat process per shard)
   MAX_OK                                  stop after this many accepted episodes (default unlimited)
   ARM_MODE=auto|left|right                auto = arm chosen by geometry (default)
+  CLAIM_DIR=/dev/shm/...                  dynamic sharding: each episode is claimed with an O_EXCL file
+                                          (pid while running, "done" after), so workers can be added at any
+                                          time; a claim whose pid is dead is taken over
 Episodes with a results row from any worker are skipped (resume after a crash/restart).
 
     EPISODES=... OUT=... run_habitat.sh pilot.py
@@ -80,11 +83,49 @@ def render_now():
     return {k: np.asarray(o[k])[..., :3].astype(np.uint8) for k in CAMS}
 
 
+CLAIM_DIR = os.environ.get("CLAIM_DIR")
+if CLAIM_DIR:
+    os.makedirs(CLAIM_DIR, exist_ok=True)
+
+
+def claim(eid):
+    """True if this worker owns the episode now (always True without CLAIM_DIR)."""
+    if not CLAIM_DIR:
+        return True
+    f = os.path.join(CLAIM_DIR, str(eid))
+    for _ in range(2):
+        try:
+            fd = os.open(f, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                c = open(f).read().strip()
+            except OSError:
+                continue
+            if c == "done" or not c.isdigit() or os.path.exists(f"/proc/{c}"):
+                return False
+            try:
+                os.remove(f)                                      # owner died mid-episode: take over
+            except OSError:
+                pass
+    return False
+
+
+def release(eid):
+    if CLAIM_DIR:
+        with open(os.path.join(CLAIM_DIR, str(eid)), "w") as f:
+            f.write("done")
+
+
 n_ok = 0
 res_f = open(f"{OUT}/results_w{WK:02d}.jsonl", "a")
 for eid in EPS:
     if n_ok >= MAX_OK:
         break
+    if not claim(eid):
+        continue
     t0 = time.time()
     rec = {"episode_id": eid, "worker": WK, "arm_mode": ARM_MODE}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
@@ -157,8 +198,9 @@ for eid in EPS:
             os.makedirs(d_ep, exist_ok=True)
             np.savez_compressed(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
             np.savez_compressed(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
-                                joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]),
-                                stage=np.asarray(buf["stage"]),        # metadata only
+                                joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]))
+            # metadata only, kept out of the policy-visible arrays (images.npz, lowdim.npz)
+            np.savez_compressed(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
                                 stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],
@@ -171,6 +213,7 @@ for eid in EPS:
     rec["wall_s"] = round(time.time() - t0, 1)
     res_f.write(json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)) + "\n")
     res_f.flush()
+    release(eid)
     print("PILOT", json.dumps({k: rec.get(k) for k in ("episode_id", "arm", "success", "accepted", "failure",
                                                         "engineering_error")}), flush=True)
 env.close()
