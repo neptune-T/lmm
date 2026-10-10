@@ -55,6 +55,17 @@ def reset_to(env, episode_id):
     it0 = env._alphabot2_iter0
     env.episode_iterator = OVMMEpisodeIterator(it0.viewpoints, it0.transformations,
                                                [env._alphabot2_raw[str(episode_id)]], cycle=True, shuffle=False)
+    # Loading a new scene recomputes the AlphaBot navmesh, which resets the pathfinder's RNG after
+    # env.seed(); measured: the first reset after a scene switch sampled a different start than every
+    # later reset of the same episode. Load the scene with a throw-away reset first, then seed + reset.
+    scene = env._alphabot2_raw[str(episode_id)].scene_id
+    if getattr(env, "_alphabot2_scene", None) != scene:
+        env.seed(episode_seed(episode_id))
+        try:
+            env.reset()
+        except AssertionError:                    # OVMM's reachability assert: the real reset decides
+            pass
+        env._alphabot2_scene = scene
     env.seed(episode_seed(episode_id))
     return env.reset()
 

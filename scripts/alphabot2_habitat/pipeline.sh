@@ -57,12 +57,12 @@ for f in sorted(glob.glob('$RUNS/nav_audit/results_w*.jsonl')):
   GPU=$GPU SPLIT=val SMOKE_EPISODE=$SE SMOKE_OUT=$RUNS/smoke $RUN $S/smoke.py > $RUNS/logs/smoke.log 2>&1
   gate smoke $RUNS/smoke/smoke.json; }
 
-# 4. episode lists from geometry AND reachability (scene round-robin): qualification 5, pilot candidates, all feasible TRAIN
+# 4. episode lists from geometry AND reachability (scene round-robin): qualification 10, pilot candidates, all feasible TRAIN
 P=$S/pick_episodes.py
 [ -s $RUNS/lists/collect_train.txt ] || python3 - <<PY
 import subprocess
 pick = lambda n, seed: subprocess.check_output(["python3", "$P", "$RUNS/feasibility/screen_train_reach.json", str(n), str(seed)], text=True).strip().split(",")
-q = pick(5, 1)
+q = pick(10, 1)
 pilot = [e for e in pick(80, 2) if e not in q][:40]
 rest = [e for e in pick(1000000, 0) if e not in q and e not in pilot]
 open("$RUNS/lists/qual_train.txt", "w").write(",".join(q))
