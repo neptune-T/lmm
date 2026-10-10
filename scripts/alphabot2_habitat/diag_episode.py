@@ -67,10 +67,22 @@ if eid:
         local = np.array(obj.transformation.inverted().transform_point(mn.Vector3(*p)))
         outside = np.maximum(lo - local, 0) + np.maximum(local - hi, 0)
         cand = act._grasp_candidate(si)
+        from lmm.embodiments.alphabot2.habitat.alphabot2_robot import EE_LINK
+        Tgb = rob.link_frame(EE_LINK[side])
+        pads = [rob.link_frame(f"{side}_{n}")[:3, 3] for n in ("left_pad", "right_pad")]
+        c_exec = (pads[0] - pads[1]) / np.linalg.norm(pads[0] - pads[1])
+        c_plan = -Tgb[:3, 0]                                   # planner: closing = gripper_base -x
+        Ro = np.array(obj.transformation.rotation())
+        axes = {"closing_exec_pads": c_exec.round(4).tolist(), "closing_gb_minus_x": c_plan.round(4).tolist(),
+                "angle_exec_vs_gb_deg": round(float(np.degrees(np.arccos(min(1.0, abs(c_exec @ c_plan))))), 2),
+                "pads_in_gb_frame": [np.round((np.linalg.inv(Tgb) @ np.r_[q, 1.0])[:3], 4).tolist() for q in pads],
+                "exec_axis_in_obj_frame": np.round(Ro.T @ c_exec, 4).tolist(),
+                "gb_axis_in_obj_frame": np.round(Ro.T @ c_plan, 4).tolist()}
         g = getattr(ex, "grasp_used", None) or {}
         box["diag"] = {"pad_mid_world": p.round(4).tolist(), "pad_mid_in_obj_box": local.round(4).tolist(),
                        "box_lo": lo.round(4).tolist(), "box_hi": hi.round(4).tolist(),
                        "outside_box_by_m": outside.round(4).tolist(), "margin_m": act.grasp_margin,
+                       "axes": axes,
                        "candidate": None if cand is None else {"idx": cand[0], "dist_m": round(cand[2], 4), "width_m": round(cand[3], 4)},
                        "object_moved_since_reset_m": round(float(np.linalg.norm(np.array(obj.translation) - box["obj0"])), 4),
                        "arm_q_now": np.round(rob.arm_q(side), 4).tolist() if hasattr(rob, "arm_q") else None,
