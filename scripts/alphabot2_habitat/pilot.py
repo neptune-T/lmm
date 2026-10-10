@@ -33,6 +33,7 @@ import numpy as np
 REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
+from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import snapshot as SN  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
 
@@ -133,7 +134,7 @@ for eid in EPS:
     rec = {"episode_id": eid, "episode": ep_id, "replica": rep, "seed": HE.episode_seed(ep_id, rep),
            "worker": WK, "arm_mode": ARM_MODE}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
-           "state": []}
+           "state": [], "base": []}
     try:
         HE.reset_to(env, ep_id, rep)
         ep = env.current_episode
@@ -154,6 +155,8 @@ for eid in EPS:
             buf["action"].append(np.asarray(cart, np.float64))
             buf["stage"].append(stage)
             buf["sim_time"].append(float(env.sim.get_world_time()))
+            xz, yaw, _ = NAV.pose2d(env)                         # metadata: base pose before action t
+            buf["base"].append([float(xz[0]), float(xz[1]), float(yaw)])
             pending["armed"] = True
 
         def rec_step(env_, a):
@@ -208,6 +211,7 @@ for eid in EPS:
                                 joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]))
             # metadata only, kept out of the policy-visible arrays (images.npz, lowdim.npz)
             np.savez_compressed(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
+                                base_xz_yaw=np.asarray(buf["base"]),      # pose2d convention (yaw about +y, 0 = +x)
                                 stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],

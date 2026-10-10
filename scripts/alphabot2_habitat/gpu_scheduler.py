@@ -37,7 +37,7 @@ st.setdefault("blocked", None)
 procs = {}
 ROUNDS = {r["name"]: r for r in CFG["rounds"]}
 ORDER = [r["name"] for r in CFG["rounds"]]
-KIND_PRIO = {"convert": 0, "iface": 1, "sft": 2, "eval": 3}
+KIND_PRIO = {"convert": 0, "iface": 1, "sft": 2, "hsweep": 3, "eval": 4}
 
 
 def save():
@@ -196,8 +196,10 @@ def check_data():
         st["jobs"].append({"round": nxt, "kind": "convert", "variant": None, "status": "pending"})
         st["jobs"].append({"round": nxt, "kind": "iface", "variant": None, "status": "pending"})
         for v in r["variants"]:
-            st["jobs"] += [{"round": nxt, "kind": "sft", "variant": v, "status": "pending", "attempts": 0},
-                           {"round": nxt, "kind": "eval", "variant": v, "status": "pending", "pass": 0}]
+            st["jobs"].append({"round": nxt, "kind": "sft", "variant": v, "status": "pending", "attempts": 0})
+            if v == "balanced" and st.get("h_exec_frozen") is None and not any(x["kind"] == "hsweep" for x in st["jobs"]):
+                st["jobs"].append({"round": nxt, "kind": "hsweep", "variant": v, "status": "pending", "done_h": {}})
+            st["jobs"].append({"round": nxt, "kind": "eval", "variant": v, "status": "pending", "pass": 0})
         save()
         event("round_start", round=nxt, accepted=res["accepted"])
 
@@ -233,7 +235,7 @@ def run_iface(j):
         return
     out = f"{R}/interface_gate/{j['round']}"
     rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/interface_gate.py", "--config", cfg,
-                         "--collect", CFG["collect"]["out"], "--h-exec", str(ROUNDS[j["round"]]["h_exec"]), "--out", out],
+                         "--collect", CFG["collect"]["out"], "--h-exec", str(h_exec()), "--out", out],
                         env={**os.environ, **env_pi(), "CUDA_VISIBLE_DEVICES": str(g[0])}, cwd=f"{L}/scripts/alphabot2_pi05",
                         stdout=open(f"{R}/logs/interface_gate_{j['round']}.log", "a"), stderr=subprocess.STDOUT).returncode
     control([])
@@ -318,51 +320,109 @@ def val_units():
     return f
 
 
-def run_eval(j):
+def h_exec():
+    """The ONE execution horizon: frozen after the sanity sweep; before that the preferred value."""
+    return int(st.get("h_exec_frozen") or CFG["eval"]["h_exec_preferred"])
+
+
+def eval_pass(name, sft_out, units, h, seed_offset, out):
+    """One end-to-end eval pass (policy server + Habitat workers on one free GPU). Returns the summary,
+    None to retry later (no GPU), or {"blocked": reason}."""
+    E = CFG["eval"]
+    g = acquire(1, 1, E["server_min_free_mib"])
+    if g is None:
+        return None
+    gpu = g[0]
+    os.makedirs(out, exist_ok=True)
+    server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sft_out}/best",
+                 "--port", str(E["port"])], f"{out}/server.log", env={**env_pi(), "CUDA_VISIBLE_DEVICES": str(gpu)},
+                cwd=f"{L}/scripts/alphabot2_pi05")
+    t0 = time.time()
+    while time.time() - t0 < 1800 and server.poll() is None and "READY" not in open(f"{out}/server.log").read():
+        time.sleep(10)
+    if server.poll() is not None or "READY" not in open(f"{out}/server.log").read():
+        control([])
+        return {"blocked": "policy server failed to start", "log": open(f"{out}/server.log").read()[-1500:]}
+    ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
+             env={"EPISODES": ",".join(units), "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
+                  "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(h), "SEED_OFFSET": str(seed_offset)})
+          for w in range(E["workers"])]
+    for w in ws:
+        w.wait()
+    os.killpg(server.pid, signal.SIGTERM)
+    control([])
+    s = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out], capture_output=True, text=True)
+                   .stdout.split("###EVAL_SUMMARY###", 1)[1])
+    s.update({"h_exec": h, "h_pred": CFG["eval"]["h_pred"], "seed_offset": seed_offset})
+    if s["engineering_errors"] == s["episodes"]:
+        return {"blocked": "every eval episode failed with an engineering error", "summary": s}
+    return s
+
+
+def run_hsweep(j):
+    """Choose the ONE execution horizon on a small fixed subset after the first balanced SFT, then freeze it."""
     E = CFG["eval"]
     _, sft_out, name = sft_config(j["round"], j["variant"])
     uf = val_units()
     if uf is None:
         return
-    while j["pass"] < E["passes"]:
-        g = acquire(1, 1, E["server_min_free_mib"])
-        if g is None:
+    units = [u["unit"] for u in json.load(open(uf))][: E["sweep_units"]]
+    j["status"] = "running"
+    for h in E["h_exec_sweep"]:
+        if str(h) in j["done_h"]:
+            continue
+        s = eval_pass(name, sft_out, units, h, 0, f"{R}/eval/{name}/hsweep_h{h}")
+        if s is None:
             return
-        gpu, out = g[0], f"{R}/eval/{name}/pass{j['pass']}"
-        os.makedirs(out, exist_ok=True)
+        if "blocked" in s:
+            j["status"] = "blocked"
+            block("HSWEEP", s["blocked"], run=name, h_exec=h)
+            return
+        j["done_h"][str(h)] = s
+        save()
+        event("hsweep_point", run=name, h_exec=h, full=f"{s['full_success_count']}/{s['overall']['n']}", overall=s["overall"])
+    stages = ("full", "place", "carry", "grasp", "find")
+    counts = {int(h): {k: int(round((s["overall"][k] or 0) * s["overall"]["n"])) for k in stages} for h, s in j["done_h"].items()}
+    n = max(s["overall"]["n"] for s in j["done_h"].values())
+    key = next((k for k in stages if max(c[k] for c in counts.values()) > 0), "find")
+    best = max(c[key] for c in counts.values())
+    tol = max(1, -(-n // 10))                                       # max(1, ceil(10% of n))
+    pref = E["h_exec_preferred"]
+    if pref in counts and counts[pref][key] >= best - tol:
+        chosen = pref
+    else:
+        chosen = min((h for h in counts if counts[h][key] == best), key=lambda h: abs(h - pref))
+    st["h_exec_frozen"] = int(chosen)
+    j["status"] = "done"
+    rec = {"chosen_h_exec": chosen, "preferred": pref, "compared_on_stage": key, "tolerance": tol, "units": n,
+           "counts_by_h": counts, "h_pred": E["h_pred"], "note": "frozen for every later SFT/eval; not changed per round"}
+    json.dump(rec, open(f"{R}/eval/{name}/hsweep_decision.json", "w"), indent=1)
+    save()
+    event("h_exec_frozen", **rec)
+
+
+def run_eval(j):
+    E = CFG["eval"]
+    _, sft_out, name = sft_config(j["round"], j["variant"])
+    uf = val_units()
+    if uf is None or st.get("h_exec_frozen") is None:
+        return                                                     # eval only with the frozen protocol
+    units = [u["unit"] for u in json.load(open(uf))]
+    while j["pass"] < E["passes"]:
         j["status"] = "running"
         save()
-        server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sft_out}/best",
-                     "--port", str(E["port"])], f"{out}/server.log", env={**env_pi(), "CUDA_VISIBLE_DEVICES": str(gpu)},
-                    cwd=f"{L}/scripts/alphabot2_pi05")
-        t0 = time.time()
-        while time.time() - t0 < 1800 and server.poll() is None and "READY" not in open(f"{out}/server.log").read():
-            time.sleep(10)
-        if server.poll() is not None or "READY" not in open(f"{out}/server.log").read():
-            control([])
-            j["status"] = "blocked"
-            block("EVAL", "policy server failed to start", run=name, log=open(f"{out}/server.log").read()[-1500:])
+        s = eval_pass(name, sft_out, units, h_exec(), j["pass"], f"{R}/eval/{name}/pass{j['pass']}")
+        if s is None:
             return
-        units = ",".join(u["unit"] for u in json.load(open(uf)))
-        ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
-                 env={"EPISODES": units, "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
-                      "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(ROUNDS[j["round"]]["h_exec"]),
-                      "SEED_OFFSET": str(j["pass"])}) for w in range(E["workers"])]
-        for w in ws:
-            w.wait()
-        os.killpg(server.pid, signal.SIGTERM)
-        control([])
-        s = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out], capture_output=True, text=True)
-                       .stdout.split("###EVAL_SUMMARY###", 1)[1])
-        if s["engineering_errors"] == s["episodes"]:
+        if "blocked" in s:
             j["status"] = "blocked"
-            block("EVAL", "every eval episode failed with an engineering error", run=name, summary=s)
+            block("EVAL", s["blocked"], run=name)
             return
         j.setdefault("summaries", []).append(s)
         j["pass"] += 1
         save()
-        event("eval_pass_done", run=name, n=j["pass"], overall=s["overall"], full_success_count=s["full_success_count"],
-              by_hand=s["by_hand"])
+        event("eval_pass_done", run=name, n=j["pass"], h_exec=s["h_exec"], success=f"{s['full_success_count']}/{s['overall']['n']}",
+              overall=s["overall"], by_hand=s["by_hand"])
     j["status"] = "done"
     decide(j, name)
 
@@ -405,7 +465,8 @@ def decide(j, name):
         sft_sum = json.load(open(f"{sft_config(j['round'], j['variant'])[1]}/summary.json"))
     except (OSError, ValueError):
         pass
-    dec = {"run": name, "round": j["round"], "variant": j["variant"], "h_exec": ROUNDS[j["round"]]["h_exec"], "h_pred": 50,
+    dec = {"run": name, "round": j["round"], "variant": j["variant"], "h_exec": h_exec(), "h_exec_frozen": st.get("h_exec_frozen"),
+           "h_pred": CFG["eval"]["h_pred"],
            "snapshot_accepted": st["rounds"][j["round"]].get("snapshot_accepted"),
            "sft": {k: sft_sum.get(k) for k in ("steps", "samples_seen", "effective_epochs", "train_episodes", "train_frames",
                                                "global_batch", "best_step", "best_val_loss")},
@@ -448,6 +509,10 @@ def run_jobs():
         gate_job = next((x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "iface"), None)
         if gate_job is None or gate_job["status"] == "done":
             run_sft(j)
+    elif j["kind"] == "hsweep":
+        sft_job = next(x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "sft" and x["variant"] == j["variant"])
+        if sft_job["status"] == "done":
+            run_hsweep(j)
     elif j["kind"] == "eval":
         sft_job = next(x for x in st["jobs"] if x["round"] == j["round"] and x["kind"] == "sft" and x["variant"] == j["variant"])
         if sft_job["status"] == "done":

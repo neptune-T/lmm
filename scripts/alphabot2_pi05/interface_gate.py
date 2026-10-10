@@ -28,8 +28,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ovmm_model  # noqa: E402
 import sampling  # noqa: E402
 from ovmm_model import IO  # noqa: E402
+from lmm.embodiments.alphabot2.ovmm_chain_check import lowering_chain  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata  # noqa: E402
+
+
 
 
 def main():
@@ -70,10 +73,11 @@ def main():
     T = ep0["frames"]
     start = int(ds.meta.episodes["dataset_from_index"][0]) if "dataset_from_index" in ds.meta.episodes.column_names else 0
     ts = sorted(set(np.linspace(0, T - 1, min(args.frames, T)).astype(int).tolist()))
-    st_err, psnr_ok, psnr_cross = 0.0, [], []
+    st_err, act_err, psnr_ok, psnr_cross = 0.0, 0.0, [], []
     for t in ts:
         item = ds[start + t]
         st_err = max(st_err, float(np.abs(item["observation.state"].numpy() - IO.state_from_proprio(low["proprio"][t])).max()))
+        act_err = max(act_err, float(np.abs(item["action"][0].numpy() - low["action"][t]).max()))     # chunk step 0 = label t
         for k, cam in IO.CAMERA_MAP.items():
             img = (item[f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255.0)
             def psnr(ref):
@@ -84,15 +88,17 @@ def main():
                 other = "left_wrist_rgb" if cam == "right_wrist_rgb" else "right_wrist_rgb"
                 psnr_cross.append(psnr(ims[other][t]) - psnr(ims[cam][t]))
     ok["A_dataset_state_equals_mapped_proprio"] = st_err < 1e-5
-    # Habitat ordering: the executed joint action at t is the arm state at t+1 (kinematic arms)
-    pr, j18 = low["proprio"], low["joint18"]
-    match = {}
-    for side, sl in (("left", slice(0, 7)), ("right", slice(8, 15))):
-        d = np.abs(pr[1:, sl] - j18[:-1, sl]).max(axis=1)
-        match[side] = float(np.mean(d < 1e-4))
-    ok["A_habitat_joint_ordering"] = min(match.values()) >= 0.95
-    rep["A"] = {"round_trip_max_err": rt, "slot_map": slots, "dataset_state_max_err": st_err,
-                "proprio_next_equals_joint_action_fraction": match, "state_labels": list(IO.STATE_LABELS)}
+    ok["C_dataset_action_equals_source_label"] = act_err < 1e-5
+    # Full lowering chain on the source episode (never state joint dims vs Cartesian action dims):
+    # CartesianMobileAction18 label -> CartesianExecutor IK -> JointMobileAction18 -> Habitat next state
+    chain = lowering_chain(low, np.load(src / "metadata.npz"))
+    ok["A_chain_lowering_reproduces_executed"] = chain["lowering"]["pass"]
+    ok["A_chain_joint_tracking"] = chain["joint_tracking"]["pass"]
+    ok["A_chain_fk_next_state_matches_label"] = chain["fk_next_state_matches_label"]["pass"]
+    ok["A_chain_gripper_round_trip"] = chain["gripper"]["pass"]
+    ok["A_chain_base_v_omega"] = chain["base"]["pass"]
+    rep["A"] = {"round_trip_max_err": rt, "slot_map": slots, "dataset_state_max_err": st_err, "dataset_action_max_err": act_err,
+                "lowering_chain": chain, "state_labels": list(IO.STATE_LABELS), "chain_episode": str(src)}
 
     # ---------------- B: images
     keys = sorted(k for k in meta.features if k.startswith("observation.images."))

@@ -1,5 +1,5 @@
 {
-  "_doc": "gpu_scheduler.py: collection always runs; tiered SFT rounds start in parallel once each round's data gate passes; each round's balanced SFT is evaluated end-to-end from normal OVMM init before the next round is created. Thresholds are presets of this restore, recorded with every gate result. Each round: policy-interface gate before SFT; explicit H_exec (receding horizon) for gate and eval; eval reports success_count/eval_count per noise-seed pass.",
+  "_doc": "gpu_scheduler.py: collection always runs; tiered SFT rounds start in parallel once each round's data gate passes; each round: policy-interface gate (lowering chain, cameras, normalization) before SFT; balanced SFT evaluated end-to-end from normal OVMM init before the next round is created. H_exec is ONE frozen control protocol: chosen once by a small {1,5,10} sweep after sanity_v1 (prefer 5), then fixed for every later SFT/eval; H_pred stays 50. Eval reports success_count/eval_count per noise-seed pass. Thresholds are presets of this restore.",
   "runs": "/workspace/runtime/runs",
   "collect": {
     "out": "/workspace/runtime/runs/collect_v1",
@@ -24,8 +24,7 @@
       "variants": [
         "balanced",
         "uniform"
-      ],
-      "h_exec": 5
+      ]
     },
     {
       "name": "v2",
@@ -37,8 +36,7 @@
       "steps": 15000,
       "variants": [
         "balanced"
-      ],
-      "h_exec": 10
+      ]
     },
     {
       "name": "main_v3",
@@ -51,8 +49,7 @@
       "variants": [
         "balanced",
         "uniform"
-      ],
-      "h_exec": 10
+      ]
     }
   ],
   "sft": {
@@ -78,6 +75,14 @@
     "passes": 2,
     "port": 5600,
     "server_min_free_mib": 20000,
-    "min_full_success_per_pass": 3
+    "min_full_success_per_pass": 3,
+    "h_pred": 50,
+    "h_exec_sweep": [
+      1,
+      5,
+      10
+    ],
+    "h_exec_preferred": 5,
+    "sweep_units": 24
   }
 }
