@@ -12,7 +12,10 @@ export TMPDIR=$W/tmp PIP_CACHE_DIR=$W/pipcache HF_HOME=$W/hf_home
 P=$E/bin/python
 TUNA="-i https://pypi.tuna.tsinghua.edu.cn/simple"
 $P -m pip install -q -U pip $TUNA
-$P -m pip install -q "torch==2.8.0" "torchvision==0.23.0" --index-url https://download.pytorch.org/whl/cu126
+# cu126 wheel index: the NJU mirror of download.pytorch.org (same files; ~80 MB/s here vs throttled upstream)
+TORCH_INDEX=${TORCH_INDEX:-https://mirrors.nju.edu.cn/pytorch/whl/cu126}
+$P -m pip install -q "torch==2.8.0" "torchvision==0.23.0" --index-url $TORCH_INDEX \
+  || $P -m pip install -q "torch==2.8.0" "torchvision==0.23.0" --index-url https://download.pytorch.org/whl/cu126
 $P -m pip install -q "lerobot[pi]==0.6.1" sentencepiece pyyaml av $TUNA
 $P - <<PY
 import torch, lerobot, transformers
