@@ -542,7 +542,7 @@ class OVMMExpert:
         self.set_stage("retract")
         self.joint_move({side: rp.q}, 10, grips={"left": 0.0, "right": 0.0})
         self.joint_move({s: np.array(NAV_TUCK[s]) for s in SIDES}, 20, grips={"left": 0.0, "right": 0.0})
-        self.set_stage("done")
+        self.set_stage("settle")   # post-release settle: simulator/OVMM success only, not SFT behaviour
         # OVMM place success needs the object on the goal, at rest and released for stability_steps (50)
         # consecutive steps. Released objects keep micro-jittering on some receptacles for seconds
         # (measured: stable after 72 / 240 steps). Stay still until the object has been at rest (OVMM's
@@ -556,6 +556,7 @@ class OVMMExpert:
             rest = rest + 1 if (lv < 1e-3 and av < 1e-3) else 0
             self.hold(1)
         self.log["settle"] = {"steps_after_release": self.t - t_release, "rest_run": rest}
+        self.set_stage("done")
 
     def _turn_to(self, yaw_goal):
         for _ in range(150):

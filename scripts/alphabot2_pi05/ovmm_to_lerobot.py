@@ -53,6 +53,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--val-permille", type=int, default=50)
     ap.add_argument("--max-episodes", type=int, default=0, help="0 = all accepted")
+    ap.add_argument("--keep-settle", type=int, default=5,
+                    help="post-release 'settle' frames kept per episode (the OVMM stability window is not SFT behaviour)")
     ap.add_argument("--png", action="store_true", help="lossless PNG frames instead of video (millions of files)")
     ap.add_argument("--writer-threads", type=int, default=16)
     args = ap.parse_args()
@@ -83,9 +85,14 @@ def main():
         ims = np.load(d / "images.npz")
         md = np.load(d / "metadata.npz")
         prop, act, stg = low["proprio"], low["action"], [str(x) for x in md["stage"]]
-        T = len(act)
-        if not (len(prop) == T == len(stg) and all(ims[c].shape[0] == T for c in CAM_MAP.values())):
+        T_raw = len(act)
+        if not (len(prop) == T_raw == len(stg) and all(ims[c].shape[0] == T_raw for c in CAM_MAP.values())):
             raise RuntimeError(f"{d}: misaligned arrays")
+        # the settle interval sits at the end (after retract); keep only its first --keep-settle frames
+        settle = [i for i, x in enumerate(stg) if x == "settle"]
+        T = (settle[0] + min(len(settle), args.keep_settle)) if settle else T_raw
+        if settle and any(x != "settle" for x in stg[settle[0]:T_raw] if x != "done"):
+            raise RuntimeError(f"{d}: non-settle frames after the settle interval")
         frames = {k: ims[c] for k, c in CAM_MAP.items()}
         for t in range(T):
             frame = {"observation.state": IO.state_from_proprio(prop[t]).astype(np.float32),
@@ -105,7 +112,7 @@ def main():
             fm["arm"].append(0 if meta.get("arm") == "left" else 1)
             fm["scene"].append(sc)
         used.append({"episode_index": ei, "unit": r["episode_id"], "episode": r.get("episode"), "replica": r.get("replica"),
-                     "frames": T, "arm": meta.get("arm"), "scene": meta["scene"], "object": meta.get("object"),
+                     "frames": T, "frames_raw": T_raw, "settle_frames_dropped": T_raw - T, "arm": meta.get("arm"), "scene": meta["scene"], "object": meta.get("object"),
                      "source": str(d)})
         if len(used) % 50 == 0:
             print(f"{len(used)}/{len(rows)} episodes, {time.time() - t0:.0f}s", flush=True)

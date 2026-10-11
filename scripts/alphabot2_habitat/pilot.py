@@ -179,7 +179,11 @@ for eid in EPS:
         rec.update({"arm": ex.log.get("arm"), "steps": len(buf["action"]), "events": ex.events,
                     "grasp_events": HE.action_obj(env).events, "ovmm": metrics(),
                     "plans": {k: ex.log.get(k) for k in ("pick_plan", "place_plan", "nav_to_object", "nav_to_receptacle")}})
+        # success label is written only after the simulator has settled (end of the settle interval)
         rec["success"] = bool(rec["expert_completed"] and rec["ovmm"].get("ovmm_place_success"))
+        st_ = [i for i, x in enumerate(buf["stage"]) if x == "settle"]
+        rec["settle"] = {"start_t": st_[0] if st_ else None, "len": len(st_), **(ex.log.get("settle") or {}),
+                         "note": "post-release settle interval: OVMM stability window only; truncated/near-zero weight in SFT"}
         if rec["success"]:
             # base travel before and after the grasp (real navigation on both sides)
             t_grasp = next(t for t, s in ex.events if str(s).startswith("grasp_"))
