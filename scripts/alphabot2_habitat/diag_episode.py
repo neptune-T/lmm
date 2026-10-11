@@ -83,7 +83,7 @@ if eid:
     act = HE.action_obj(env)
     box = {}
 
-    trace = []
+    trace, ptrace = [], []
 
     def on_step(cart, stage, r):
         if os.environ.get("TRACE_HOLD") and stage in ("grasp", "lift", "carry", "navigate_to_receptacle"):
@@ -99,6 +99,18 @@ if eid:
             if not trace or trace[-1]["stage"] != stage or any(trace[-1][f"m{i}"]["grasped"] != row[f"m{i}"]["grasped"] for i in (0, 1)) \
                     or len(trace) < 3 or ex.t % 25 == 0:
                 trace.append(row)
+        if os.environ.get("TRACE_PLACE") and stage in ("release", "retract", "done"):
+            m = env.get_metrics()
+            obj_, _ = ex.target_object()
+            pick = lambda k: (m.get(k) if not isinstance(m.get(k), dict) else {kk: float(vv) for kk, vv in m.get(k).items()})
+            ptrace.append({"t": ex.t, "stage": stage, "picked_idx": getattr(env.task, "_picked_object_idx", None),
+                           "active_mgr": getattr(env.sim.get_agent_data(0), "active_grasp_manager_idx", None),
+                           "sim_grasp_mgr_grasped": bool(env.sim.grasp_mgr.is_grasped),
+                           "lin_vel": round(float(np.linalg.norm(np.array(obj_.linear_velocity))), 5),
+                           "ang_vel": round(float(np.linalg.norm(np.array(obj_.angular_velocity))), 5),
+                           "motion": str(obj_.motion_type),
+                           **{k: pick(k) for k in ("ovmm_placement_stability", "object_at_rest", "obj_anywhere_on_goal",
+                                                    "ovmm_place_object_phase_success", "ovmm_place_success")}})
         if stage != "grasp" or "diag" in box:
             return
         rob = HE.robot(env)
@@ -142,7 +154,7 @@ if eid:
         res = "completed"
     except Exception as e:
         res = repr(e)
-    rep["grasp"] = {"episode": eid, "arm": side, "result": res, "events": ex.events, "hold_trace": trace[:80],
+    rep["grasp"] = {"episode": eid, "arm": side, "result": res, "events": ex.events, "hold_trace": trace[:80], "place_trace": ptrace[:10] + ptrace[-6:],
                     "hold_thresh": float(env.sim.get_agent_data(0).grasp_mgrs[0]._config.hold_thresh),
                     "nav_to_object": ex.log.get("nav_to_object"), "diag": box.get("diag")}
     print("GRASP", json.dumps(rep["grasp"], default=str), flush=True)
