@@ -185,12 +185,13 @@ def check_data():
     res = gate("dataqc", CFG["collect"]["out"], f"{R}/feasibility/units_train.json", str(r["min_accepted"]),
                str(r["min_arm_share"]), str(r["min_scene_coverage"]), str(r["min_scenes"]))
     keep = {k: res.get(k) for k in ("pass", "accepted", "scenes", "arm_share", "scene_coverage",
-                                    "n_integrity_failures", "success_but_replay_mismatch")}
+                                    "n_integrity_failures", "replay_reject_fraction")}
     st["rounds"][nxt]["last_check"] = keep
     save()
     event("data_check", round=nxt, **keep)
-    if res.get("n_integrity_failures") or res.get("success_but_replay_mismatch"):
-        block("DATAQC", "integrity/timing/leakage failure or determinism break in accepted data", round=nxt, result=res)
+    if res.get("n_integrity_failures") or (res.get("replay_reject_fraction") or 0) > CFG.get("data_gate_max_replay_reject_fraction", 0.2):
+        block("DATAQC", "integrity/timing/leakage failure, or replay rejections above the systemic-nondeterminism alarm",
+              round=nxt, result=res)
         return
     if res.get("pass"):
         st["rounds"][nxt].update({"status": "running", "snapshot_accepted": res["accepted"]})

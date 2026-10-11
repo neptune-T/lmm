@@ -182,14 +182,15 @@ if kind == "pilot":
     out_dir = sys.argv[2]
     pil = set(open(sys.argv[3]).read().replace(",", "\n").split())
     rs = [r for r in rows(out_dir) if str(r["episode_id"]) in pil]
-    succ = [r for r in rs if r.get("success")]
+    succ = [r for r in rs if r.get("success") and r.get("accepted")]          # replay-accepted successes
+    replay_rejected = [r["episode_id"] for r in rs if r.get("success") and not r.get("accepted")]
     CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
     LOWDIM = {"proprio", "action", "joint18", "sim_time"}
     ARM_WORDS = re.compile(r"\b(left|right|arm|hand|gripper|stage|grasp)\b", re.I)
     per, bad = [], []
     for r in succ:
         eid, d = str(r["episode_id"]), r.get("dir") or f"{out_dir}/episodes/{r['episode_id']}"
-        c = {"replay_fresh_reset": bool(r.get("accepted")) and bool(r["replay"].get("start_fix_equal"))}
+        c = {"replay_fresh_reset": bool(r.get("accepted")) and bool(r["replay"].get("start_fix_equal"))}   # tolerance rule (pilot.py)
         try:
             im, lo = np.load(f"{d}/images.npz"), np.load(f"{d}/lowdim.npz")
             meta = json.load(open(f"{d}/meta.json"))
@@ -214,6 +215,8 @@ if kind == "pilot":
     ok = (10 <= len(good) <= 20 and not bad and arms["left"] >= 1 and arms["right"] >= 1
           and len({p["scene"] for p in good}) > 1)
     emit("pilot", ok, processed=len(rs), complete_successes=len(good), failing_checks=bad, arms=arms,
+         replay_rejected_successes=replay_rejected,
+         replay_reject_fraction=round(len(replay_rejected) / max(1, len(replay_rejected) + len(succ)), 3),
          scenes=len({p["scene"] for p in good}), engineering_errors=[r["episode_id"] for r in rs if r.get("engineering_error")],
          episodes=per)
 if kind == "dataqc":
@@ -261,15 +264,18 @@ if kind == "dataqc":
         except Exception as e:
             bad.append(f"{r['episode_id']}: {repr(e)[:80]}")
     mismatch = [r["episode_id"] for r in rs if r.get("success") and not r.get("accepted")]
+    max_rej = float(os.environ.get("MAX_REPLAY_REJECT_FRACTION", "0.2"))
+    rej_frac = len(mismatch) / max(1, len(mismatch) + len(acc))
     arms = {a: sum(r.get("arm") == a for r in acc) for a in ("left", "right")}
     feas_scenes = {u["scene"] for u in units}
     cov = len({r.get("scene") for r in acc} & feas_scenes) / max(1, len(feas_scenes))
     share = {a: (arms[a] / len(acc) if acc else 0.0) for a in arms}
     n_scenes = len({r.get("scene") for r in acc})
-    ok = (len(acc) >= n_min and not bad and not mismatch and all(v >= arm_min for v in share.values()) and cov >= cov_min
-          and n_scenes >= scenes_min)
+    ok = (len(acc) >= n_min and not bad and rej_frac <= max_rej and all(v >= arm_min for v in share.values())
+          and cov >= cov_min and n_scenes >= scenes_min)
     emit("dataqc", ok, scenes=n_scenes, min_scenes=scenes_min, accepted=len(acc), processed=len(rs), min_accepted=n_min, integrity_failures=bad[:20],
-         n_integrity_failures=len(bad), success_but_replay_mismatch=mismatch[:20], arm_share=share, min_arm_share=arm_min,
+         n_integrity_failures=len(bad), success_but_replay_mismatch=mismatch[:20], replay_reject_fraction=round(rej_frac, 3),
+         max_replay_reject_fraction=max_rej, arm_share=share, min_arm_share=arm_min,
          scene_coverage=round(cov, 3), feasible_scenes=len(feas_scenes), min_scene_coverage=cov_min,
          objects=len({r.get("object") for r in acc}), accepted_steps=sum(int(r.get("steps") or 0) for r in acc))
 

@@ -58,8 +58,8 @@
       "balanced": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_balanced.yaml",
       "uniform": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_uniform.yaml"
     },
-    "datasets": "/workspace/runtime/datasets",
-    "out": "/workspace/runtime/sft",
+    "datasets": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/datasets",
+    "out": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft",
     "min_gpus": 1,
     "max_gpus": 4,
     "min_free_mib": 76000,
@@ -85,5 +85,6 @@
     "h_exec_preferred": 5,
     "sweep_units": 24
   },
-  "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs"
+  "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs",
+  "data_gate_max_replay_reject_fraction": 0.2
 }

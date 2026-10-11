@@ -42,6 +42,20 @@ from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
 OUT = os.environ.get("OUT", "/workspace/runtime/runs/pilot")
 os.makedirs(f"{OUT}/episodes", exist_ok=True)
 CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
+REPLAY_TOL = {"root_max_abs": 1e-5, "proprio_max_abs": 1e-6, "objects_max_abs": 0.025}
+
+
+def save_npz(path, **arrays):
+    """np.savez_compressed into memory, then ONE sequential write: bosfs rejects the zip writer's seeks
+    (OSError 22) when writing in place."""
+    import io
+    buf = io.BytesIO()
+    np.savez_compressed(buf, **arrays)
+    data = buf.getvalue()
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 MAX_OK = int(os.environ.get("MAX_OK", "1000000000"))
 ARM_MODE = os.environ.get("ARM_MODE", "auto")
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
@@ -210,16 +224,21 @@ for eid in EPS:
                              "objects_max_abs": max(x["objects_max_abs"] for x in d),
                              "held_equal_all": all(x["held_equal"] for x in d),
                              "place_success": metrics().get("ovmm_place_success"), "wall_s": round(time.time() - t1, 1)}
+            # fresh-reset replay acceptance (tolerances as the snapshot gate's; exact equality rejected
+            # float32 noise of ~1e-6 m in the root transform):
+            rec["replay"]["tolerances"] = REPLAY_TOL
             rec["accepted"] = bool(rec["replay"]["place_success"] and rec["replay"]["held_equal_all"]
-                                   and rec["replay"]["proprio_max_abs"] < 1e-6 and rec["replay"]["root_max_abs"] < 1e-6)
+                                   and rec["replay"]["root_max_abs"] <= REPLAY_TOL["root_max_abs"]
+                                   and rec["replay"]["proprio_max_abs"] <= REPLAY_TOL["proprio_max_abs"]
+                                   and rec["replay"]["objects_max_abs"] <= REPLAY_TOL["objects_max_abs"])
             d_ep = f"{OUT}/episodes/{str(eid).replace('#', '_r')}"
             rec["dir"] = d_ep
             os.makedirs(d_ep, exist_ok=True)
-            np.savez_compressed(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
-            np.savez_compressed(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
+            save_npz(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
+            save_npz(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
                                 joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]))
             # metadata only, kept out of the policy-visible arrays (images.npz, lowdim.npz)
-            np.savez_compressed(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
+            save_npz(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
                                 base_xz_yaw=np.asarray(buf["base"]),      # pose2d convention (yaw about +y, 0 = +x)
                                 stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
