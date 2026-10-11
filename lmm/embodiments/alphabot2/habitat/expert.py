@@ -82,6 +82,11 @@ class OVMMExpert:
         self.ex = None
         self.rng = np.random.default_rng(rng_seed)
         self.t = 0
+        # COMMANDED gripper state (the label semantics: 1 = close/hold, 0 = open). Never the measured closed
+        # fraction: holding an object the fingers stop at its width (fraction < close threshold), and
+        # re-commanding that measurement released the object on the first navigation step.
+        p = self.rob.proprio16()
+        self.grip_cmd = {"left": float(p[7] >= 0.5), "right": float(p[15] >= 0.5)}
 
     # ------------------------------------------------------------------ geometry
     def arm_T_world(self):
@@ -125,6 +130,7 @@ class OVMMExpert:
 
     # ------------------------------------------------------------------ stepping
     def step(self, cart18):
+        self.grip_cmd = {"left": float(cart18[C.CART_LEFT_GRIPPER]), "right": float(cart18[C.CART_RIGHT_GRIPPER])}
         joint, rep = self.ex.lower(cart18)
         valid = bool(rep["left"]["ik_valid"] and rep["right"]["ik_valid"])
         if self.on_step is not None:
@@ -141,13 +147,16 @@ class OVMMExpert:
         self.events.append((self.t, s))
 
     def cart_now(self):
-        return C.cartesian_from_joint_action(np.r_[self.rob.proprio16(), 0.0, 0.0], self.ex.prev_quat)
+        """Hold the current arm pose; grippers keep their COMMANDED state."""
+        c = C.cartesian_from_joint_action(np.r_[self.rob.proprio16(), 0.0, 0.0], self.ex.prev_quat)
+        c[C.CART_LEFT_GRIPPER], c[C.CART_RIGHT_GRIPPER] = self.grip_cmd["left"], self.grip_cmd["right"]
+        return c
 
     def joint_move(self, targets: dict, n: int, grips=None, v=0.0, w=0.0):
         """Interpolate arm joints (per side) to targets; label = FK of the commanded joints."""
         p0 = self.rob.proprio16()
         q0 = {"left": p0[0:7].copy(), "right": p0[8:15].copy()}
-        g = {"left": p0[7], "right": p0[15]} if grips is None else grips
+        g = dict(self.grip_cmd) if grips is None else {**self.grip_cmd, **grips}
         for i in range(n):
             u = (i + 1) / n
             u = u * u * (3 - 2 * u)
