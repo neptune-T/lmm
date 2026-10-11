@@ -20,6 +20,8 @@ import numpy as np
 REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
+from lmm.embodiments.alphabot2.habitat import fsutil as FS  # noqa: E402
+FS.protect_stdio()
 from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert, SIDES  # noqa: E402
 
 OUT = os.environ["OUT"]
@@ -112,7 +114,6 @@ with open(fn, "a") as f:
             rec["engineering_error"] = repr(e)[:300]
             rec["tb"] = traceback.format_exc()[-800:]
         rec["wall_s"] = round(time.time() - t0, 2)
-        f.write(json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)) + "\n")
-        f.flush()
+        FS.append_line(fn, json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)))
 print("###EMB_DONE###", WK, flush=True)
 env.close()

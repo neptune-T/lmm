@@ -5,13 +5,14 @@
 #     EMB_GPUS=2,3 AUDIT_GPU=3 bash start_final_screen.sh
 set -u
 L=/workspace/lmm; S=$L/scripts/alphabot2_habitat; R=/workspace/runtime/runs; RUN="bash $S/run_habitat.sh"
-mkdir -p $R/emb_v2 $R/reset_audit $R/logs
+LOGS=${ALPHABOT2_LOG_DIR:-/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs}; export ALPHABOT2_LOG_DIR=$LOGS
+mkdir -p $R/emb_v2 $R/reset_audit $LOGS
 touch $R/emb_v2/.running $R/reset_audit/.running
 GL=(${EMB_GPUS//,/ }); N=${EMB_WORKERS:-16}
 (
   for w in $(seq 0 $((N - 1))); do
     env WORKER=$w NWORKERS=$N SCREEN=$R/feasibility/screen_train.json REPLICAS=3 GPU=${GL[$((w % ${#GL[@]}))]} SPLIT=train \
-      OUT=$R/emb_v2 $RUN $S/emb_screen.py > $R/logs/emb_v2_w$w.log 2>&1 &
+      OUT=$R/emb_v2 $RUN $S/emb_screen.py > $LOGS/emb_v2_w$w.log 2>&1 &
   done; wait; rm -f $R/emb_v2/.running; echo EMB_V2_DONE
 ) &
 (
@@ -31,7 +32,7 @@ PY
   P=$(python3 -c "import json;print(','.join(json.load(open('$R/reset_audit/plan.json'))['pairs']))")
   for w in 0 1 2 3; do
     env WORKER=$w NWORKERS=4 UNITS=$U PAIRS=$P GPU=${AUDIT_GPU:-3} SPLIT=train OUT=$R/reset_audit $RUN $S/reset_audit.py \
-      > $R/logs/reset_audit_w$w.log 2>&1 &
+      > $LOGS/reset_audit_w$w.log 2>&1 &
   done; wait
   python3 $S/reset_audit.py --summarize $R/reset_audit; rm -f $R/reset_audit/.running; echo RESET_AUDIT_DONE
 ) &

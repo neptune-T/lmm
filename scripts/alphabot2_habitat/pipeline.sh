@@ -6,12 +6,14 @@
 set -uo pipefail
 L=${LMM_REPO:-/workspace/lmm}; R=${RUNTIME:-/workspace/runtime}; RUNS=$R/runs; S=$L/scripts/alphabot2_habitat
 RUN="bash $S/run_habitat.sh"; GPU=${GPU:-3}; ST=$RUNS/pipeline_status.jsonl
-mkdir -p $RUNS/logs $RUNS/lists
+# process logs on the user's CFS (NFS): verbose Habitat logs through bosfs hit FUSE ENOMEM under page-cache pressure
+LOGS=${ALPHABOT2_LOG_DIR:-/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs}; export ALPHABOT2_LOG_DIR=$LOGS
+mkdir -p $LOGS $RUNS/lists
 note() { echo "{\"time\": \"$(date '+%F %T')\", \"stage\": \"$1\", \"event\": \"$2\"}" >> $ST; echo "$(date '+%F %T') $1 $2"; }
 passed() { grep -q "\"gate\": \"$1\", \"pass\": true" $ST 2>/dev/null; }
 gate() {   # gate NAME ARGS...
   local name=$1; shift
-  local out; out=$($RUN $S/gates.py $name "$@" 2>>$RUNS/logs/gates.err | grep '###GATE###' | sed 's/^###GATE###//')
+  local out; out=$($RUN $S/gates.py $name "$@" 2>>$LOGS/gates.err | grep '###GATE###' | sed 's/^###GATE###//')
   [ -n "$out" ] || out="{\"gate\": \"$name\", \"pass\": false, \"error\": \"gate produced no output\"}"
   echo "$out" >> $ST
   if echo "$out" | grep -q '"pass": true'; then note $name PASS; else note $name BLOCKED; exit 1; fi
@@ -25,13 +27,13 @@ par() {    # par N LOGNAME ENV... SCRIPT : N parallel shards (WORKER/NWORKERS), 
     for x in "$@"; do
       if [ ${#gl[@]} -gt 0 ] && [[ $x == GPU=* ]]; then args+=("GPU=${gl[$((w % ${#gl[@]}))]}"); else args+=("$x"); fi
     done
-    env WORKER=$w NWORKERS=$n "${args[@]}" > $RUNS/logs/${log}_w$w.log 2>&1 &
+    env WORKER=$w NWORKERS=$n "${args[@]}" > $LOGS/${log}_w$w.log 2>&1 &
   done; wait
 }
 
 # 1. full geometric feasibility re-screen: train 6331 / val 133 / 38 of 38 train scenes
 passed screen || { note screen start
-  CUDA_VISIBLE_DEVICES=$GPU SPLITS=train,val OUT=$RUNS/feasibility $RUN $S/feasibility_screen.py > $RUNS/logs/screen.log 2>&1
+  CUDA_VISIBLE_DEVICES=$GPU SPLITS=train,val OUT=$RUNS/feasibility $RUN $S/feasibility_screen.py > $LOGS/screen.log 2>&1
   gate screen $RUNS/feasibility/summary.json $L/artifacts/alphabot2_habitat/feasibility_summary.json; }
 
 # 2. navmesh regression: the documented radius-0.38 val audit (nav_qual defaults: 2 episodes x first 15 scenes),
@@ -63,7 +65,7 @@ for f in sorted(glob.glob('$RUNS/nav_audit/results_w*.jsonl')):
         if not r.get('engineering_error') and r.get('to_object',{}).get('arrived') and r.get('to_receptacle',{}).get('arrived'):
             print(r['episode_id']); raise SystemExit")
   note smoke "episode_$SE"
-  GPU=$GPU SPLIT=val SMOKE_EPISODE=$SE SMOKE_OUT=$RUNS/smoke $RUN $S/smoke.py > $RUNS/logs/smoke.log 2>&1
+  GPU=$GPU SPLIT=val SMOKE_EPISODE=$SE SMOKE_OUT=$RUNS/smoke $RUN $S/smoke.py > $LOGS/smoke.log 2>&1
   gate smoke $RUNS/smoke/smoke.json; }
 
 # 4. lists from the AlphaBot-feasible TRAIN units only (scene round-robin, object diversity):
@@ -108,7 +110,7 @@ PY
 passed manip || { note manip start; rm -rf $RUNS/manip_qual
   for m in left right; do
     GPU=$GPU SPLIT=train MODES=$m RESULTS_TAG=$m EPISODES=$(cat $RUNS/lists/qual_$m.txt) OUT=$RUNS/manip_qual \
-      $RUN $S/manip_qual.py > $RUNS/logs/manip_$m.log 2>&1 &
+      $RUN $S/manip_qual.py > $LOGS/manip_$m.log 2>&1 &
   done
   par 2 manip_auto GPU=$GPU SPLIT=train MODES=auto EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/manip_qual $RUN $S/manip_qual.py
   wait
@@ -124,17 +126,17 @@ for f in sorted(glob.glob('$RUNS/manip_qual/results*.jsonl')):
         r=json.loads(l)
         if r['mode']=='auto' and r.get('expert_completed') and (r.get('ovmm') or {}).get('ovmm_place_success')==1.0: ok.append(r['episode_id'])
 print(','.join(ok[:4]))")
-  GPU=$GPU SPLIT=train EPISODES=$SE OUT=$RUNS/snapshot_qual $RUN $S/snapshot_qual.py > $RUNS/logs/snapshot.log 2>&1
+  GPU=$GPU SPLIT=train EPISODES=$SE OUT=$RUNS/snapshot_qual $RUN $S/snapshot_qual.py > $LOGS/snapshot.log 2>&1
   gate snapshot $RUNS/snapshot_qual; }
 
 # 7. head-camera confirmation in OVMM scenes (frozen neck pitch 0.2 vs neighbours; reported, not a gate)
 [ -s $RUNS/camera_sweep/camera_sweep.json ] || { note camera start
   V=""
   for p in 0.1 0.2 0.3; do
-    ALPHABOT2_DEPS=$R/deps $RUN -m lmm.embodiments.alphabot2.habitat.build_urdf $R/alphabot2_assets/head_p$p --head-pitch $p >> $RUNS/logs/camera.log 2>&1 || true
+    ALPHABOT2_DEPS=$R/deps $RUN -m lmm.embodiments.alphabot2.habitat.build_urdf $R/alphabot2_assets/head_p$p --head-pitch $p >> $LOGS/camera.log 2>&1 || true
     V="$V${V:+,}p$p:$R/alphabot2_assets/head_p$p/alphabot2.urdf"
   done
-  GPU=$GPU SPLIT=train HEAD_URDFS=$V EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/camera_sweep $RUN $S/camera_sweep.py >> $RUNS/logs/camera.log 2>&1
+  GPU=$GPU SPLIT=train HEAD_URDFS=$V EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/camera_sweep $RUN $S/camera_sweep.py >> $LOGS/camera.log 2>&1
   note camera "done_$( [ -s $RUNS/camera_sweep/camera_sweep.json ] && echo ok || echo failed)"; }
 
 # 7b. FINAL AlphaBot-feasible list: the embodiment screen re-run with the robust place planner
@@ -143,7 +145,7 @@ print(','.join(ok[:4]))")
 passed embodiment_final || { note embodiment_final start
   while [ -f $RUNS/emb_v2/.running ] || [ -f $RUNS/reset_audit/.running ]; do sleep 60; done   # background runs
   par ${EMB_WORKERS:-6} emb_v2 SCREEN=$RUNS/feasibility/screen_train.json REPLICAS=${REPLICAS:-3} GPU=$GPU SPLIT=train OUT=$RUNS/emb_v2 $RUN $S/emb_screen.py
-  python3 $S/reset_audit.py --summarize $RUNS/reset_audit >> $RUNS/logs/reset_audit.log 2>&1
+  python3 $S/reset_audit.py --summarize $RUNS/reset_audit >> $LOGS/reset_audit.log 2>&1
   gate embodiment $RUNS/emb_v2 $RUNS/feasibility/screen_train.json $RUNS/feasibility/units_train_v2.json
   python3 - <<PY
 import json
@@ -198,12 +200,12 @@ passed pilot || { note pilot start
   rm -rf /dev/shm/alphabot2_claims_pilot
   for w in 0 1; do
     GPU=$GPU WORKER=$((90 + w)) NWORKERS=1 MAX_OK=10 CLAIM_DIR=/dev/shm/alphabot2_claims_pilot \
-      EPISODE_FILE=$RUNS/lists/pilot_candidates.txt OUT=$RUNS/collect_v1 $RUN $S/pilot.py > $RUNS/logs/pilot_w$w.log 2>&1 &
+      EPISODE_FILE=$RUNS/lists/pilot_candidates.txt OUT=$RUNS/collect_v1 $RUN $S/pilot.py > $LOGS/pilot_w$w.log 2>&1 &
   done; wait
   gate pilot $RUNS/collect_v1 $RUNS/lists/pilot_candidates.txt; }
 
 # 9. long-running: continuous collection (seed-bank units, idle GPUs, crash recovery, atomic claims,
 #    resume) -> data QC gate -> conversion -> pi0.5 SFT -> normal-init e2e eval (gpu_scheduler.py)
 note collection start
-python3 $S/gpu_scheduler.py ${SCHEDULE:-$L/configs/alphabot2_pi05/schedule.json} >> $RUNS/logs/scheduler.log 2>&1
+python3 $S/gpu_scheduler.py ${SCHEDULE:-$L/configs/alphabot2_pi05/schedule.json} >> $LOGS/scheduler.log 2>&1
 note collection exited

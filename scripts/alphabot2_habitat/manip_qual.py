@@ -18,6 +18,8 @@ import numpy as np
 REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
+from lmm.embodiments.alphabot2.habitat import fsutil as FS  # noqa: E402
+FS.protect_stdio()
 from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import ExpertFailure, OVMMExpert  # noqa: E402
 
@@ -100,8 +102,7 @@ with open(f"{OUT}/results_{os.environ.get('RESULTS_TAG', f'w{WK:02d}')}.jsonl", 
                 rec["engineering_error"] = repr(e)
                 rec["tb"] = traceback.format_exc()[-1500:]
             rec["wall_s"] = round(time.time() - t0, 1)
-            fout.write(json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)) + "\n")
-            fout.flush()
+            FS.append_line(fout.name, json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)))
             print("MANIP", json.dumps({k: rec.get(k) for k in ("episode_id", "mode", "arm", "expert_completed", "failure",
                                                                "stage_reached", "engineering_error")}),
                   (rec.get("ovmm") or {}).get("ovmm_place_success"), flush=True)

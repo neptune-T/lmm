@@ -28,7 +28,8 @@ RUN = ["bash", f"{S}/run_habitat.sh"]
 CFG = json.load(open(sys.argv[1]))
 R = CFG["runs"]
 STATE_F, EV_F = f"{R}/scheduler_state.json", f"{R}/scheduler_events.jsonl"
-os.makedirs(f"{R}/logs", exist_ok=True)
+LOGS = CFG.get("logs", "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs")   # NFS, not bosfs
+os.makedirs(LOGS, exist_ok=True)
 st = json.load(open(STATE_F)) if os.path.exists(STATE_F) else {}
 st.setdefault("rounds", {r["name"]: {"status": "waiting"} for r in CFG["rounds"]})
 st.setdefault("jobs", [])
@@ -107,7 +108,7 @@ def ensure_collection():
     if p is not None:
         event("collection_supervisor_restart", returncode=p.returncode)
     C = CFG["collect"]
-    procs["collect"] = sh(["python3", f"{S}/collect_supervisor.py"], f"{R}/logs/supervisor.log",
+    procs["collect"] = sh(["python3", f"{S}/collect_supervisor.py"], f"{LOGS}/supervisor.log",
                           env={"OUT": C["out"], "EPISODE_FILE": C["units_file"], "START_GPUS": ",".join(map(str, C["start_gpus"])),
                                "PER_GPU": str(C["per_gpu"]), "POLL_S": str(C["poll_s"]), "CLAIM_DIR": "/dev/shm/alphabot2_claims",
                                "RUN": f"{S}/run_habitat.sh", "PILOT": f"{S}/pilot.py"})
@@ -217,7 +218,7 @@ def run_convert(j):
                "--split", split, "--out", ds_dir(j["round"], split)]
         if split == "train" and r["max_episodes"]:
             cmd += ["--max-episodes", str(r["max_episodes"])]
-        rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{R}/logs/convert_{j['round']}_{split}.log", "a"),
+        rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{LOGS}/convert_{j['round']}_{split}.log", "a"),
                             stderr=subprocess.STDOUT).returncode
         if rc != 0:
             j["status"] = "blocked"
@@ -237,7 +238,7 @@ def run_iface(j):
     rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/interface_gate.py", "--config", cfg,
                          "--collect", CFG["collect"]["out"], "--h-exec", str(h_exec()), "--out", out],
                         env={**os.environ, **env_pi(), "CUDA_VISIBLE_DEVICES": str(g[0])}, cwd=f"{L}/scripts/alphabot2_pi05",
-                        stdout=open(f"{R}/logs/interface_gate_{j['round']}.log", "a"), stderr=subprocess.STDOUT).returncode
+                        stdout=open(f"{LOGS}/interface_gate_{j['round']}.log", "a"), stderr=subprocess.STDOUT).returncode
     control([])
     try:
         res = json.load(open(f"{out}/interface_gate.json"))
@@ -267,7 +268,7 @@ def run_sft(j):
             return
         procs["sft"] = sh([CFG["sft"]["python"], "-m", "torch.distributed.run", f"--nproc_per_node={len(chosen)}",
                            f"--master_port={CFG['sft']['master_port']}", f"{L}/scripts/alphabot2_pi05/sft_ovmm.py",
-                           "--config", cfg], f"{R}/logs/sft_{name}_attempt{j['attempts']}.log",
+                           "--config", cfg], f"{LOGS}/sft_{name}_attempt{j['attempts']}.log",
                           env={**env_pi(), "CUDA_VISIBLE_DEVICES": ",".join(map(str, chosen))}, cwd=f"{L}/scripts/alphabot2_pi05")
         j.update({"status": "running", "gpus": chosen})
         save()
@@ -307,7 +308,7 @@ def val_units():
     subprocess.run(RUN + [f"{S}/emb_screen.py"], env={**os.environ, "SCREEN": f"{R}/feasibility/screen_{E['split']}.json",
                                                      "SPLIT": E["split"], "REPLICAS": str(E["replicas"]), "GPU": str(g[0]),
                                                      "OUT": f"{R}/emb_{E['split']}"},
-                   stdout=open(f"{R}/logs/emb_{E['split']}.log", "a"), stderr=subprocess.STDOUT)
+                   stdout=open(f"{LOGS}/emb_{E['split']}.log", "a"), stderr=subprocess.STDOUT)
     control([])
     res = gate("embodiment", f"{R}/emb_{E['split']}", f"{R}/feasibility/screen_{E['split']}.json", f)
     if not res.get("pass"):

@@ -84,5 +84,6 @@
     ],
     "h_exec_preferred": 5,
     "sweep_units": 24
-  }
+  },
+  "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs"
 }

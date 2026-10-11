@@ -18,7 +18,7 @@ IDLE_MIB = int(os.environ.get("IDLE_MIB", "500"))
 CLAIM_DIR = os.environ.get("CLAIM_DIR", "/dev/shm/alphabot2_claims")
 RUN = os.environ.get("RUN", "/workspace/lmm/scripts/alphabot2_habitat/run_habitat.sh")
 PILOT = os.environ.get("PILOT", "/workspace/lmm/scripts/alphabot2_habitat/pilot.py")
-LOGS = f"{OUT}/worker_logs"
+LOGS = os.path.join(os.environ.get("ALPHABOT2_LOG_DIR", "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs"), "collect_workers")
 os.makedirs(LOGS, exist_ok=True)
 eps = open(EPF).read().replace(",", "\n").split()
 owned = [int(g) for g in os.environ.get("START_GPUS", "").split(",") if g != ""]

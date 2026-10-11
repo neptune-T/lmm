@@ -33,6 +33,8 @@ import numpy as np
 REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
+from lmm.embodiments.alphabot2.habitat import fsutil as FS  # noqa: E402
+FS.protect_stdio()
 from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import snapshot as SN  # noqa: E402
 from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
@@ -227,8 +229,7 @@ for eid in EPS:
         rec["engineering_error"] = repr(e)
         rec["tb"] = traceback.format_exc()[-1500:]
     rec["wall_s"] = round(time.time() - t0, 1)
-    res_f.write(json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)) + "\n")
-    res_f.flush()
+    FS.append_line(res_f.name, json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)))
     release(eid)
     print("PILOT", json.dumps({k: rec.get(k) for k in ("episode_id", "arm", "success", "accepted", "failure",
                                                         "engineering_error")}), flush=True)
