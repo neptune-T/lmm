@@ -34,6 +34,8 @@ from . import nav as NAV
 from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES
 
 MAX_APERTURE_M = 0.0804            # fully open pad-SURFACE gap (xacro collision meshes, gripper_gap.py)
+SETTLE_STEPS = 60                  # >= OVMM stability_steps (50) after release, + margin
+PLACE_ROBUST_M = 0.03              # place IK must survive +-3 cm (base arrival error), as for picks
 MAX_GRASP_WIDTH_M = 0.072          # widest object planned across the fingers (0.8 cm margin)
 MIN_GRASP_WIDTH_M = 0.016
 PAD_MID_GB = np.array([0.0, -0.006, 0.1196])     # pad midpoint in gripper_base (URDF, open)
@@ -387,6 +389,13 @@ class OVMMExpert:
         self.rob.sim_obj.transformation = cur
         return A
 
+    @staticmethod
+    def _shifted(T, d):
+        Ts = np.array(T, float).copy()
+        Ts[0, 3] += d[0]
+        Ts[1, 3] += d[1]
+        return Ts
+
     def place_pose(self, side, point_arm, half_h, yaw):
         """gripper_base target (arm frame) that holds the object (as grasped) with its centre
         ``half_h + 0.03`` above ``point_arm``, the grasp rotated by ``yaw`` about the vertical."""
@@ -428,6 +437,9 @@ class OVMMExpert:
                         Ta = T.copy()
                         Ta[2, 3] += 0.10
                         rp, okp = self.ik_ok(side, Ta, seeds=(rg.q,))
+                        if okp and not all(self.ik_ok(side, self._shifted(T, d), seeds=(rg.q,))[1] for d in
+                                           ((PLACE_ROBUST_M, 0), (-PLACE_ROBUST_M, 0), (0, PLACE_ROBUST_M), (0, -PLACE_ROBUST_M))):
+                            okp = False
                         if okp:
                             if best is None or geo < best["cost"]:
                                 best = {"standoff": c, "yaw": yaw, "cost": geo, "point": p, "recep": g.object_name}
@@ -502,11 +514,19 @@ class OVMMExpert:
         nav2 = self.nav_to(pl["standoff"]["xyz"], None)
         self._turn_to(pl["standoff"]["yaw"])
         self.log["nav_to_receptacle"] = {k: nav2.get(k) for k in ("arrived", "arrival_dist_m", "steps", "collision_steps")}
-        T = self.place_pose(side, self.to_arm(pl["point"]), ext[1], pl["yaw"])
-        rg, okg = self.ik_ok(side, T)
-        Ta = T.copy()
-        Ta[2, 3] += 0.10
-        rp, okp = self.ik_ok(side, Ta, seeds=(rg.q,))
+        # re-plan the place yaw from the actual pose (arrival is within a few cm / degrees)
+        okg = okp = False
+        for yaw in [pl["yaw"]] + [y for y in (0.0, 0.5, -0.5, 1.0, -1.0) if y != pl["yaw"]]:
+            T = self.place_pose(side, self.to_arm(pl["point"]), ext[1], yaw)
+            rg, okg = self.ik_ok(side, T)
+            if not okg:
+                continue
+            Ta = T.copy()
+            Ta[2, 3] += 0.10
+            rp, okp = self.ik_ok(side, Ta, seeds=(rg.q,))
+            if okp:
+                self.log["place_plan"]["yaw_after_arrival"] = yaw
+                break
         if not (okg and okp):
             raise ExpertFailure(f"place IK infeasible after arrival ({side})")
         g = {side: 1.0, ("right" if side == "left" else "left"): 0.0}
@@ -515,13 +535,17 @@ class OVMMExpert:
         self.set_stage("lower")
         self.joint_move({side: rg.q}, 10, grips=g)
         self.set_stage("release")
+        t_release = self.t
         self.hold(6, grips={"left": 0.0, "right": 0.0})
         self.events.append((self.t, f"release_{side}"))
         self.set_stage("retract")
         self.joint_move({side: rp.q}, 10, grips={"left": 0.0, "right": 0.0})
         self.joint_move({s: np.array(NAV_TUCK[s]) for s in SIDES}, 20, grips={"left": 0.0, "right": 0.0})
         self.set_stage("done")
-        self.hold(10)             # let the released object settle (OVMM placement stability)
+        # OVMM place success needs the object on the goal, at rest and released for stability_steps (50)
+        # consecutive steps; at 10 Hz that is 5 s. Stay still until SETTLE_STEPS after release (a fixed
+        # count -- the expert never reads the success metric).
+        self.hold(max(10, SETTLE_STEPS - (self.t - t_release)))
 
     def _turn_to(self, yaw_goal):
         for _ in range(150):
