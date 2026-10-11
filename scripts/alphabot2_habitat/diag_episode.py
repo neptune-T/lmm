@@ -155,6 +155,12 @@ if eid:
     except Exception as e:
         res = repr(e)
     rep["grasp"] = {"episode": eid, "arm": side, "result": res, "events": ex.events, "hold_trace": trace[:80], "place_trace": ptrace[:10] + ptrace[-6:],
+                    "place_summary": {"steps_after_release": len(ptrace),
+                                      "first_at_rest": next((p_["t"] for p_ in ptrace if p_["object_at_rest"]), None),
+                                      "at_rest_fraction": round(sum(bool(p_["object_at_rest"]) for p_ in ptrace) / max(1, len(ptrace)), 3),
+                                      "first_stable": next((p_["t"] for p_ in ptrace if p_["ovmm_placement_stability"]), None),
+                                      "first_place_success": next((p_["t"] for p_ in ptrace if p_["ovmm_place_success"]), None),
+                                      "max_ang_vel_last50": max((p_["ang_vel"] for p_ in ptrace[-50:]), default=None)},
                     "hold_thresh": float(env.sim.get_agent_data(0).grasp_mgrs[0]._config.hold_thresh),
                     "nav_to_object": ex.log.get("nav_to_object"), "diag": box.get("diag")}
     print("GRASP", json.dumps(rep["grasp"], default=str), flush=True)

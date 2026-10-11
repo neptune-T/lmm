@@ -34,7 +34,7 @@ from . import nav as NAV
 from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES
 
 MAX_APERTURE_M = 0.0804            # fully open pad-SURFACE gap (xacro collision meshes, gripper_gap.py)
-SETTLE_STEPS = 60                  # >= OVMM stability_steps (50) after release, + margin
+SETTLE_STEPS = int(__import__("os").environ.get("ALPHABOT2_SETTLE_STEPS", "60"))   # >= OVMM stability_steps (50) after release
 PLACE_ROBUST_M = 0.03              # place IK must survive +-3 cm (base arrival error), as for picks
 MAX_GRASP_WIDTH_M = 0.072          # widest object planned across the fingers (0.8 cm margin)
 MIN_GRASP_WIDTH_M = 0.016
