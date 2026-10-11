@@ -522,8 +522,39 @@ def run_jobs():
     save()
 
 
+def pilot_replay_check():
+    """Before large-scale collection: the pilot's replay_rejected_successes / all_successes. Replay-rejected
+    trajectories never enter any dataset; a high fraction means a systemic replay problem must be diagnosed
+    first, so collection does not start (pilot_max_replay_reject_fraction, ~5-10%)."""
+    pil = None
+    try:
+        for l in open(f"{R}/pipeline_status.jsonl"):
+            try:
+                r = json.loads(l)
+            except ValueError:
+                continue
+            if r.get("gate") == "pilot" and r.get("pass"):
+                pil = r
+    except OSError:
+        pass
+    if pil is None:
+        return False, {"error": "no passed pilot gate found"}
+    frac = float(pil.get("replay_reject_fraction") or 0.0)
+    lim = float(CFG.get("pilot_max_replay_reject_fraction", 0.10))
+    info = {"replay_rejected_successes": pil.get("replay_rejected_successes"), "replay_reject_fraction": frac,
+            "limit": lim, "accepted": pil.get("complete_successes")}
+    return frac <= lim, info
+
+
 def main():
     event("scheduler_start", rounds=ORDER)
+    ok, info = pilot_replay_check()
+    event("pilot_replay_check", ok=ok, **info)
+    if not ok:
+        block("REPLAY_DIAGNOSIS", "pilot replay rejections above the pre-collection limit: diagnose systemic replay "
+              "nondeterminism before large-scale collection (no collection started)", **info)
+        while True:                                                # stay up for status; do nothing else
+            time.sleep(3600)
     while True:
         try:
             ensure_collection()
