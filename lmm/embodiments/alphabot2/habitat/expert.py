@@ -34,7 +34,8 @@ from . import nav as NAV
 from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES
 
 MAX_APERTURE_M = 0.0804            # fully open pad-SURFACE gap (xacro collision meshes, gripper_gap.py)
-SETTLE_STEPS = int(__import__("os").environ.get("ALPHABOT2_SETTLE_STEPS", "60"))   # >= OVMM stability_steps (50) after release
+SETTLE_REST_STEPS = 55             # > OVMM stability_steps (50) consecutive at-rest steps after release
+SETTLE_MAX_STEPS = int(__import__("os").environ.get("ALPHABOT2_SETTLE_MAX_STEPS", "300"))   # 30 s cap
 PLACE_ROBUST_M = 0.03              # place IK must survive +-3 cm (base arrival error), as for picks
 MAX_GRASP_WIDTH_M = 0.072          # widest object planned across the fingers (0.8 cm margin)
 MIN_GRASP_WIDTH_M = 0.016
@@ -543,9 +544,18 @@ class OVMMExpert:
         self.joint_move({s: np.array(NAV_TUCK[s]) for s in SIDES}, 20, grips={"left": 0.0, "right": 0.0})
         self.set_stage("done")
         # OVMM place success needs the object on the goal, at rest and released for stability_steps (50)
-        # consecutive steps; at 10 Hz that is 5 s. Stay still until SETTLE_STEPS after release (a fixed
-        # count -- the expert never reads the success metric).
-        self.hold(max(10, SETTLE_STEPS - (self.t - t_release)))
+        # consecutive steps. Released objects keep micro-jittering on some receptacles for seconds
+        # (measured: stable after 72 / 240 steps). Stay still until the object has been at rest (OVMM's
+        # 1e-3 linear / angular velocity thresholds, physical state only -- never the success metric) for
+        # SETTLE_REST_STEPS consecutive steps, at most SETTLE_MAX_STEPS after release.
+        self.hold(10)
+        rest = 0
+        while rest < SETTLE_REST_STEPS and self.t - t_release < SETTLE_MAX_STEPS:
+            lv = float(np.linalg.norm(np.array(obj.linear_velocity)))
+            av = float(np.linalg.norm(np.array(obj.angular_velocity)))
+            rest = rest + 1 if (lv < 1e-3 and av < 1e-3) else 0
+            self.hold(1)
+        self.log["settle"] = {"steps_after_release": self.t - t_release, "rest_run": rest}
 
     def _turn_to(self, yaw_goal):
         for _ in range(150):

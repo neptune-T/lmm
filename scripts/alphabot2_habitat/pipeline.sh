@@ -137,6 +137,62 @@ print(','.join(ok[:4]))")
   GPU=$GPU SPLIT=train HEAD_URDFS=$V EPISODES=$(cat $RUNS/lists/qual_auto.txt) OUT=$RUNS/camera_sweep $RUN $S/camera_sweep.py >> $RUNS/logs/camera.log 2>&1
   note camera "done_$( [ -s $RUNS/camera_sweep/camera_sweep.json ] && echo ok || echo failed)"; }
 
+# 7b. FINAL AlphaBot-feasible list: the embodiment screen re-run with the robust place planner
+#     (runs/emb_v2; the earlier list is a provisional superset) minus RESET_NONDETERMINISTIC units from the
+#     multi-process reset audit (runs/reset_audit). Pilot and collection draw ONLY from this list.
+passed embodiment_final || { note embodiment_final start
+  while [ -f $RUNS/emb_v2/.running ] || [ -f $RUNS/reset_audit/.running ]; do sleep 60; done   # background runs
+  par ${EMB_WORKERS:-6} emb_v2 SCREEN=$RUNS/feasibility/screen_train.json REPLICAS=${REPLICAS:-3} GPU=$GPU SPLIT=train OUT=$RUNS/emb_v2 $RUN $S/emb_screen.py
+  python3 $S/reset_audit.py --summarize $RUNS/reset_audit >> $RUNS/logs/reset_audit.log 2>&1
+  gate embodiment $RUNS/emb_v2 $RUNS/feasibility/screen_train.json $RUNS/feasibility/units_train_v2.json
+  python3 - <<PY
+import json
+U = json.load(open("$RUNS/feasibility/units_train_v2.json"))
+try:
+    bad = set(json.load(open("$RUNS/reset_audit/reset_audit.json"))["reset_nondeterministic"])
+except (OSError, ValueError):
+    bad = set()
+bad_eps = {b.split("#")[0] for b in bad}
+final = [u for u in U if u["episode_id"] not in bad_eps]
+json.dump(final, open("$RUNS/feasibility/units_train_final.json", "w"))
+json.dump({"excluded_reset_nondeterministic_episodes": sorted(bad_eps), "units_v2": len(U), "units_final": len(final)},
+          open("$RUNS/feasibility/units_train_final_info.json", "w"), indent=1)
+print("FINAL_UNITS", len(U), "->", len(final), "excluded", sorted(bad_eps))
+PY
+  cp $RUNS/feasibility/units_train_final.json $RUNS/feasibility/units_train.json      # data gates read this name
+  rm -f $RUNS/lists/pilot_candidates.txt $RUNS/lists/collect_train.txt
+  python3 - <<PY
+import json, random
+from collections import defaultdict
+U = json.load(open("$RUNS/feasibility/units_train_final.json"))
+used = set()
+for f in ("qual_left", "qual_right", "qual_auto"):
+    try:
+        used |= set(open(f"$RUNS/lists/{f}.txt").read().strip().split(","))
+    except OSError:
+        pass
+def rr(pool, n, seed):
+    rnd = random.Random(seed); by = defaultdict(list)
+    for u in pool: by[u["scene"]].append(u)
+    for v in by.values(): rnd.shuffle(v)
+    scenes = sorted(by); rnd.shuffle(scenes); out, seen = [], set()
+    while len(out) < n and any(by.values()):
+        for sc in scenes:
+            if by[sc] and len(out) < n:
+                pick = next((u for u in by[sc] if u["object"] not in seen), by[sc][0])
+                by[sc].remove(pick); seen.add(pick["object"]); out.append(pick)
+    return out
+pilot = rr([u for u in U if u["replica"] == 0 and u["episode_id"] not in used], 40, 4)
+order = [u["unit"] for u in pilot]
+for rep in sorted({u["replica"] for u in U}):
+    order += [u["unit"] for u in rr([u for u in U if u["replica"] == rep and u["unit"] not in set(order)], 10**9, 10 + rep)]
+open("$RUNS/lists/pilot_candidates.txt", "w").write(",".join(u["unit"] for u in pilot))
+open("$RUNS/lists/collect_train.txt", "w").write("\\n".join(order) + "\\n")
+print("FINAL_LISTS pilot", len(pilot), "collect_units", len(order))
+PY
+  note embodiment_final lists_frozen
+  echo '{"gate": "embodiment_final", "pass": true}' >> $ST; }
+
 # 8. pilot: 10-20 complete successful trajectories, fresh-reset replay, timing, leakage, both arms, >1 scene
 passed pilot || { note pilot start
   rm -rf /dev/shm/alphabot2_claims_pilot

@@ -30,6 +30,7 @@ sampling:
     lower: 3.0
     release: 4.0
     retract: 2.0
+    done: 0.3             # post-release settling (OVMM stability window) is idle: downweighted
   cruise_weight: 0.2      # straight navigation cruise is downsampled
   cruise_omega: 0.05
   cruise_v_frac: 0.8
