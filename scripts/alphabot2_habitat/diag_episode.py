@@ -46,6 +46,35 @@ for eid in [e for e in os.environ.get("RESET_EPISODES", "").split(",") if e]:
     rep["reset"][eid] = {"fresh": runs, "after_motion": after}
     print("RESET", eid, json.dumps(rep["reset"][eid]), flush=True)
 
+def head_cam_vs_link():
+    """Head RGB sensor node vs the robot's head_camera link (world): far apart = the camera is stale."""
+    rob = HE.robot(env)
+    sens = np.array(env.sim._sensors["head_rgb"]._sensor_object.node.absolute_translation)
+    link = np.array(rob.sim_obj.get_link_scene_node(rob.link_id["head_camera"]).absolute_translation)
+    return {"sensor_minus_head_link_m": round(float(np.linalg.norm(sens - link)), 3),
+            "base_xz": [round(float(rob.sim_obj.translation[0]), 3), round(float(rob.sim_obj.translation[2]), 3)]}
+
+
+if os.environ.get("ORDER_TEST"):                  # "A,B": reset A; run the expert on B; reset A twice more
+    a_, b_ = os.environ["ORDER_TEST"].split(",")
+    seq = []
+    for step_ in ("fresh", "expert_on_b", "after", "again"):
+        if step_ == "expert_on_b":
+            HE.reset_to(env, b_)
+            HE.fix_start(env)
+            try:
+                OVMMExpert(env).run()
+                seq.append({"step": f"expert {b_}", "result": "completed"})
+            except Exception as e:
+                seq.append({"step": f"expert {b_}", "result": repr(e)[:120]})
+            seq.append({"step": f"after expert {b_}", "cam": head_cam_vs_link()})
+            continue
+        r = try_reset(a_)
+        seq.append({"step": f"reset {a_} ({step_})", **r, "cam": head_cam_vs_link()})
+    rep["order_test"] = seq
+    for x in seq:
+        print("ORDER", json.dumps(x), flush=True)
+
 eid = os.environ.get("GRASP_EPISODE")
 if eid:
     side = os.environ.get("ARM", "left")
