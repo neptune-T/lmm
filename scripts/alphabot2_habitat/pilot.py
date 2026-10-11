@@ -54,8 +54,12 @@ def save_npz(path, **arrays):
     buf = io.BytesIO()
     np.savez_compressed(buf, **arrays)
     data = buf.getvalue()
-    with open(path, "wb") as f:
-        f.write(data)
+
+    def w():
+        with open(path, "wb") as f:
+            f.write(data)
+    FS._retry(w)                                              # transient bosfs FUSE ENOMEM
+    return len(data)
 
 
 MAX_OK = int(os.environ.get("MAX_OK", "1000000000"))
@@ -230,18 +234,18 @@ for eid in EPS:
             d_ep = f"{OUT}/episodes/{str(eid).replace('#', '_r')}"
             rec["dir"] = d_ep
             os.makedirs(d_ep, exist_ok=True)
-            save_npz(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
-            save_npz(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
+            nbytes = save_npz(f"{d_ep}/images.npz", **{k: np.asarray(v, np.uint8) for k, v in buf["imgs"].items()})
+            nbytes += save_npz(f"{d_ep}/lowdim.npz", proprio=np.asarray(buf["proprio"]), action=np.asarray(buf["action"]),
                                 joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]))
             # metadata only, kept out of the policy-visible arrays (images.npz, lowdim.npz)
-            save_npz(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
+            nbytes += save_npz(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
                                 base_xz_yaw=np.asarray(buf["base"]),      # pose2d convention (yaw about +y, 0 = +x)
                                 stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],
                            "metadata_only": ["stage", "events", "arm", "plans", "ovmm", "grasp_events"]},
                           f, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
-            rec["bytes"] = sum(os.path.getsize(f"{d_ep}/{x}") for x in os.listdir(d_ep))
+            rec["bytes"] = nbytes                                  # in-memory sizes (bosfs reports stale sizes)
             n_ok += int(rec["accepted"])
     except Exception as e:
         rec["engineering_error"] = repr(e)
