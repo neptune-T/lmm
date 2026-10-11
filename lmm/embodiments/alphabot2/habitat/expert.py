@@ -31,7 +31,7 @@ from lmm.embodiments.alphabot2 import pi05_contract as P
 
 from . import env as HE
 from . import nav as NAV
-from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES
+from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES, _np4
 
 MAX_APERTURE_M = 0.0804            # fully open pad-SURFACE gap (xacro collision meshes, gripper_gap.py)
 SETTLE_REST_STEPS = 55             # > OVMM stability_steps (50) consecutive at-rest steps after release
@@ -384,13 +384,15 @@ class OVMMExpert:
         return best
 
     def _arm_frame_at(self, xyz_hab, yaw):
-        """Arm frame A world pose if the robot root stood at xyz_hab with heading yaw."""
-        cur = self.rob.sim_obj.transformation
-        self.rob.sim_obj.transformation = mn.Matrix4.from_(
-            mn.Quaternion.rotation(mn.Rad(yaw), mn.Vector3(0, 1, 0)).to_matrix(), mn.Vector3(*xyz_hab))
-        A = self.rob.arm_frame()
-        self.rob.sim_obj.transformation = cur
-        return A
+        """Arm frame A world pose if the robot root stood at xyz_hab with heading yaw.
+
+        Pure algebra (A is rigid w.r.t. the root): never writes the root transform. A transient
+        teleport-and-restore perturbed Bullet's contact state and left the root ~1e-4 m off, so the
+        expert run stopped being a pure replay of its recorded actions (collection replay mismatches)."""
+        T_cur = _np4(self.rob.sim_obj.transformation)
+        T_at = _np4(mn.Matrix4.from_(
+            mn.Quaternion.rotation(mn.Rad(yaw), mn.Vector3(0, 1, 0)).to_matrix(), mn.Vector3(*xyz_hab)))
+        return T_at @ np.linalg.inv(T_cur) @ np.asarray(self.rob.arm_frame(), float)
 
     @staticmethod
     def _shifted(T, d):
