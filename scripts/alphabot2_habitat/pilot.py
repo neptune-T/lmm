@@ -49,7 +49,10 @@ if os.environ.get("EPISODE_FILE"):
     EPS = open(os.environ["EPISODE_FILE"]).read().replace(",", "\n").split()
 else:
     EPS = os.environ["EPISODES"].split(",")
-EPS = EPS[WK::NW]
+# static sharding only without dynamic claims: with CLAIM_DIR, WORKER just names the results file (e.g. 90,
+# or gpu*10+slot) and every worker walks the whole list, claiming units atomically
+if not os.environ.get("CLAIM_DIR"):
+    EPS = EPS[WK::NW]
 DONE = set()
 for f in sorted(n for n in set(glob.glob(f"{OUT}/results*.jsonl")) | {f"{OUT}/results_w{i:02d}.jsonl" for i in range(100)}
                if os.path.exists(n)):                     # bosfs readdir lags: probe worker files too
