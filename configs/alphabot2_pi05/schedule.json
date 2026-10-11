@@ -9,7 +9,9 @@
     ],
     "per_gpu": 4,
     "poll_s": 120,
-    "min_collect_gpus": 1
+    "min_collect_gpus": 1,
+    "legacy_commit": "7e62b2e",
+    "legacy_commit_note": "collector commit of rows written before rows carried code_commit (workers started at 7e62b2e)"
   },
   "data_check_every_s": 900,
   "rounds": [
@@ -71,7 +73,7 @@
   "eval": {
     "split": "val",
     "replicas": 1,
-    "workers": 6,
+    "workers": 8,
     "passes": 2,
     "port": 5600,
     "server_min_free_mib": 20000,
@@ -83,12 +85,16 @@
       10
     ],
     "h_exec_preferred": 5,
-    "sweep_units": 24
+    "sweep_units": 24,
+    "eval_max_units": 200,
+    "screen_workers": 4
   },
   "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs",
   "data_gate_max_replay_reject_fraction": 0.2,
   "pilot_max_replay_reject_fraction": 0.1,
   "data_gate_max_replay_reject_fraction_note": "engineering alarm only (not a correctness threshold); replay-rejected trajectories never enter any dataset",
   "pilot_gate": "pilot_clean",
-  "reset_contract": "hard world rebuild -> seeded task reset -> episode (frozen; no soft-reset path)"
+  "reset_contract": "hard world rebuild -> seeded task reset -> episode (frozen; no soft-reset path)",
+  "stop_after_round": "sanity_v1",
+  "stop_after_round_note": "Stage 1: after sanity_v1's balanced normal-init eval nothing new starts (collection continues); results wait for the user's review"
 }

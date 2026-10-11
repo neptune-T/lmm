@@ -17,10 +17,19 @@ written (which of find / grasp / carry / place drops), so data is not piled up b
   A missing SFT env/assets is a wait (re-checked every poll), not a block.
 * SFT crash/stall -> restart with resume (newest complete checkpoint), up to max_restarts.
 * RL / frontier are never started. State: RUNS/scheduler_state.json; events: RUNS/scheduler_events.jsonl.
+* Frozen inputs: a round converts exactly the IDs of its manifest (make_manifest.py, RUNS/manifests/), never a
+  scan of the growing collection. H_exec is swept on a calibration subset of the OVMM eval split that is
+  disjoint (by episode) from the held-out eval subset (RUNS/eval_splits/, frozen once). RUNS/run_info/<round>.json
+  records sample IDs, split, dataset version, collector/expert/reset-contract/interface commits, SFT config and
+  checkpoint, H_exec decision and the calibration/eval split.
+* Crash safety: one scheduler (flock); a restarted scheduler adopts the running collection supervisor,
+  conversion, SFT and orphaned eval workers instead of starting duplicates (scheduler_watchdog.sh restarts it).
+* CFG["stop_after_round"]: after that round's balanced eval decision no further round or job starts
+  (collection continues); results stay for the user's review.
 
     python3 gpu_scheduler.py /workspace/lmm/configs/alphabot2_pi05/schedule.json
 """
-import json, os, signal, subprocess, sys, time
+import fcntl, hashlib, json, os, signal, subprocess, sys, time, zlib
 
 L = os.environ.get("LMM_REPO", "/workspace/lmm")
 S = f"{L}/scripts/alphabot2_habitat"
@@ -99,6 +108,26 @@ def collect_status():
         return json.load(open(f"{CFG['collect']['out']}/supervisor_status.json"))
     except (OSError, ValueError):
         return {}
+
+
+def pgrep(pattern):
+    """[(pid, cmdline)] of live processes matching the regex (never this scheduler)."""
+    r = subprocess.run(["pgrep", "-af", pattern], capture_output=True, text=True)
+    out = []
+    for l in r.stdout.splitlines():
+        pid, _, cmd = l.partition(" ")
+        if int(pid) != os.getpid() and "pgrep" not in cmd:
+            out.append((int(pid), cmd))
+    return out
+
+
+def started_epoch(pid):
+    e = subprocess.run(["ps", "-o", "etimes=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return time.time() - int(e) if e else None
+
+
+def sha256(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
 class Adopted:
@@ -237,21 +266,77 @@ def prio(j):
 
 
 # ------------------------------------------------------------------ jobs
+def manifest_path(rnd):
+    return f"{R}/manifests/{rnd}.json"
+
+
 def run_convert(j):
-    r = ROUNDS[j["round"]]
-    for split in ("train", "val"):
-        cmd = [CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/ovmm_to_lerobot.py", "--src", CFG["collect"]["out"],
-               "--split", split, "--out", ds_dir(j["round"], split)]
-        if split == "train" and r["max_episodes"]:
-            cmd += ["--max-episodes", str(r["max_episodes"])]
-        rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{LOGS}/convert_{j['round']}_{split}.log", "a"),
-                            stderr=subprocess.STDOUT).returncode
-        if rc != 0:
+    """Freeze the round's manifest, then convert exactly its IDs per split. A conversion still running from
+    a previous scheduler is adopted (waited for); its start time is the snapshot cutoff and its train
+    output becomes the manifest's train list (verified against the snapshot rule)."""
+    rnd = j["round"]
+    r = ROUNDS[rnd]
+    live = pgrep(f"ovmm_to_lerobot.py.*--out {ds_dir(rnd, '')}")
+    if live:
+        if not j.get("adopted"):
+            j["adopted"] = True
+            tr = [p for p, c in live if "--split train" in c and "--manifest" not in c]
+            if tr and not os.path.exists(manifest_path(rnd)):
+                j["snapshot_cutoff"] = started_epoch(tr[0])
+            event("convert_adopted", round=rnd, pids=[p for p, _ in live], snapshot_cutoff=j.get("snapshot_cutoff"))
+        j["status"] = "running"
+        return
+    mp = manifest_path(rnd)
+    if not os.path.exists(mp):
+        cutoff = j.get("snapshot_cutoff") or time.time()
+        j["snapshot_cutoff"] = cutoff
+        idx = f"{ds_dir(rnd, 'train')}/ovmm_episode_index.json"
+        cmd = ["python3", f"{S}/make_manifest.py", "--src", CFG["collect"]["out"], "--round", rnd, "--cutoff", str(cutoff),
+               "--max-train", str(r["max_episodes"]), "--out", mp, "--legacy-commit", CFG["collect"].get("legacy_commit", "")]
+        if j.get("adopted") and os.path.exists(idx):
+            try:
+                if not json.load(open(idx)).get("manifest"):
+                    cmd += ["--train-from-index", idx]
+            except (OSError, ValueError):
+                pass
+        rc = subprocess.run(cmd, stdout=open(f"{LOGS}/manifest_{rnd}.log", "a"), stderr=subprocess.STDOUT).returncode
+        if rc != 0 or not os.path.exists(mp):
             j["status"] = "blocked"
-            block("CONVERT", f"ovmm_to_lerobot.py {j['round']} --split {split} exited {rc}")
+            block("MANIFEST", f"make_manifest.py {rnd} exited {rc}")
+            return
+    m = json.load(open(mp))
+    v = m.get("train_verification")
+    if v and len(v["in_index_not_rule"]) + len(v["in_rule_not_index"]) > 3:
+        j["status"] = "blocked"
+        block("MANIFEST", "adopted train list disagrees with the snapshot rule beyond boundary noise", verification=v)
+        return
+    if not m["train"] or not m["val"]:
+        j["status"] = "blocked"
+        block("MANIFEST", "empty train or val split", n_train=m["n_train"], n_val=m["n_val"])
+        return
+    if not j.get("manifest_logged"):
+        j["manifest_logged"] = True
+        event("manifest_frozen", round=rnd, path=mp, n_train=m["n_train"], n_val=m["n_val"],
+              dataset_version=m["dataset_version"], snapshot_cutoff=m["snapshot_cutoff"], train_verification=v)
+    for split in ("train", "val"):
+        out = ds_dir(rnd, split)
+        idx = f"{out}/ovmm_episode_index.json"
+        if os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]:
+            continue                                               # already holds exactly the manifest's IDs
+        j["status"] = "running"
+        save()
+        cmd = [CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/ovmm_to_lerobot.py", "--src", CFG["collect"]["out"],
+               "--manifest", mp, "--split", split, "--out", out]
+        rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{LOGS}/convert_{rnd}_{split}.log", "a"),
+                            stderr=subprocess.STDOUT).returncode
+        ok = rc == 0 and os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]
+        if not ok:
+            j["status"] = "blocked"
+            block("CONVERT", f"ovmm_to_lerobot.py {rnd} --split {split} exited {rc} or does not match the manifest")
             return
     j["status"] = "done"
-    event("converted", round=j["round"])
+    event("converted", round=rnd, dataset_version=m["dataset_version"], n_train=m["n_train"], n_val=m["n_val"])
+    write_run_info(rnd)
 
 
 def run_iface(j):
@@ -275,6 +360,7 @@ def run_iface(j):
     if rc == 0 and res.get("pass"):
         j["status"] = "done"
         event("interface_gate_pass", round=j["round"], checks=res.get("checks"), visualization=res.get("report", {}).get("visualization"))
+        write_run_info(j["round"])
     else:
         j["status"] = "blocked"
         block("INTERFACE", "policy-interface gate failed", round=j["round"],
@@ -284,6 +370,12 @@ def run_iface(j):
 def run_sft(j):
     cfg, out, name = sft_config(j["round"], j["variant"])
     p = procs.get("sft")
+    if p is None:
+        live = pgrep(f"sft_ovmm.py --config {cfg}")
+        if live:                                                    # still running from a previous scheduler
+            procs["sft"] = Adopted(min(pid for pid, _ in live))
+            event("sft_adopted", run=name, pid=procs["sft"].pid)
+            return
     if p is None:                                                   # (re)launch, resuming if checkpoints exist
         if j.get("attempts", 0) > CFG["sft"]["max_restarts"]:
             j["status"] = "blocked"
@@ -312,9 +404,10 @@ def run_sft(j):
     rc = p.returncode
     del procs["sft"]
     control([])
-    if rc == 0 and os.path.exists(f"{out}/DONE"):
+    if os.path.exists(f"{out}/DONE") and rc in (0, -1):           # -1: adopted process (exit code unknown)
         j["status"] = "done"
         event("sft_done", run=name, summary=json.load(open(f"{out}/summary.json")))
+        write_run_info(j["round"])
     elif rc == 3:
         j["status"] = "blocked"
         block("SFT", "non-finite loss (exit 3)", run=name)
@@ -324,27 +417,78 @@ def run_sft(j):
 
 
 def val_units():
+    """The AlphaBot-feasible OVMM eval-split units, or None while the background screen runs."""
     f = f"{R}/feasibility/units_{CFG['eval']['split']}.json"
-    if os.path.exists(f):
-        return f
+    return f if os.path.exists(f) else None
+
+
+def ensure_val_screen():
+    """Embodiment screen of the OVMM eval split (val_screen.sh, detached, sharded by scene), started as soon
+    as a round runs so it is ready when SFT finishes; co-located with collection on a GPU we may use
+    (no foreign process), nothing is released for it. Gate -> units file, or a hard block."""
     E = CFG["eval"]
-    g = acquire(1, 1, E["server_min_free_mib"])
-    if g is None:
+    f = f"{R}/feasibility/units_{E['split']}.json"
+    out = f"{R}/emb_{E['split']}"
+    if os.path.exists(f) or st["blocked"] or not any(x["status"] in ("pending", "running") for x in st["jobs"]):
+        return
+    if pgrep("val_screen.sh"):
+        return
+    done = f"{out}/VAL_SCREEN_DONE"
+    if os.path.exists(done):
+        res = gate("embodiment", out, f"{R}/feasibility/screen_{E['split']}.json", f)
+        if not res.get("pass"):
+            if os.path.exists(f):
+                os.remove(f)
+            block("EVAL_SCREEN", "eval-split embodiment screen incomplete/non-deterministic", result=res)
+            return
+        st["val_funnel"] = res.get("funnel_episodes")
+        save()
+        event("val_screen_ok", funnel=res.get("funnel_episodes"), units=res.get("units"))
+        return
+    g = gpus()
+    ok = sorted((i for i, x in g.items() if not x["foreign"] and x["free"] >= E["server_min_free_mib"]),
+                key=lambda i: -g[i]["free"])
+    if not ok:
+        return
+    os.makedirs(out, exist_ok=True)
+    sh(["bash", f"{S}/val_screen.sh", R, str(ok[0]), str(E.get("screen_workers", 4)), str(E["replicas"]), E["split"], LOGS],
+       f"{LOGS}/val_screen.log")
+    event("val_screen_start", gpu=ok[0], workers=E.get("screen_workers", 4), split=E["split"])
+
+
+def eval_split():
+    """Frozen once: calibration units (H_exec sweep) and the held-out eval units, disjoint by episode.
+    Order = crc32('hexec-calib:<episode>'); the first sweep_units episodes calibrate, the rest (capped at
+    eval_max_units) are the held-out normal-init eval set."""
+    E = CFG["eval"]
+    f = f"{R}/eval_splits/{E['split']}_calib_eval.json"
+    if os.path.exists(f):
+        return json.load(open(f))
+    uf = val_units()
+    if uf is None:
         return None
-    subprocess.run(RUN + [f"{S}/emb_screen.py"], env={**os.environ, "SCREEN": f"{R}/feasibility/screen_{E['split']}.json",
-                                                     "SPLIT": E["split"], "REPLICAS": str(E["replicas"]), "GPU": str(g[0]),
-                                                     "OUT": f"{R}/emb_{E['split']}"},
-                   stdout=open(f"{LOGS}/emb_{E['split']}.log", "a"), stderr=subprocess.STDOUT)
-    control([])
-    res = gate("embodiment", f"{R}/emb_{E['split']}", f"{R}/feasibility/screen_{E['split']}.json", f)
-    if not res.get("pass"):
-        if os.path.exists(f):
-            os.remove(f)
-        block("EVAL_SCREEN", "val embodiment screen incomplete/non-deterministic", result=res)
-        return None
-    st["val_funnel"] = res.get("funnel_episodes")
-    event("val_screen_ok", funnel=res.get("funnel_episodes"), units=res.get("units"))
-    return f
+    units = json.load(open(uf))
+    eps = sorted({str(u["episode_id"]) for u in units}, key=lambda e: (zlib.crc32(f"hexec-calib:{e}".encode()), e))
+    cal_eps = set(eps[: E["sweep_units"]])
+    rest = eps[E["sweep_units"]:]
+    ev_eps = set(rest[: E["eval_max_units"]] if E.get("eval_max_units") else rest)
+    cal = [u["unit"] for u in units if str(u["episode_id"]) in cal_eps]
+    ev = [u["unit"] for u in units if str(u["episode_id"]) in ev_eps]
+    scenes = lambda us: len({u["scene"] for u in units if u["unit"] in set(us)})
+    rec = {"split": E["split"], "source": uf, "source_sha256": sha256(uf), "created": time.strftime("%F %T"),
+           "rule": "episodes ordered by crc32('hexec-calib:<episode>'); first sweep_units -> calibration; next "
+                   "eval_max_units -> held-out eval; disjoint by episode",
+           "calibration": cal, "eval": ev, "n_calibration": len(cal), "n_eval": len(ev),
+           "scenes_calibration": scenes(cal), "scenes_eval": scenes(ev), "n_feasible_units": len(units),
+           "calibration_sha256": hashlib.sha256("\n".join(cal).encode()).hexdigest(),
+           "eval_sha256": hashlib.sha256("\n".join(ev).encode()).hexdigest()}
+    assert not ({u.split("#")[0] for u in cal} & {u.split("#")[0] for u in ev})
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    json.dump(rec, open(f + ".tmp", "w"), indent=1)
+    os.replace(f + ".tmp", f)
+    event("eval_split_frozen", path=f, n_calibration=len(cal), n_eval=len(ev),
+          scenes_calibration=rec["scenes_calibration"], scenes_eval=rec["scenes_eval"])
+    return rec
 
 
 def h_exec():
@@ -353,47 +497,82 @@ def h_exec():
 
 
 def eval_pass(name, sft_out, units, h, seed_offset, out):
-    """One end-to-end eval pass (policy server + Habitat workers on one free GPU). Returns the summary,
-    None to retry later (no GPU), or {"blocked": reason}."""
+    """One end-to-end eval pass (policy server + Habitat workers on one GPU). Returns the summary, None to
+    retry later (no GPU / orphaned workers of a previous scheduler still running), or {"blocked": reason}.
+    Workers resume per unit; units still missing after a re-run count as engineering errors."""
     E = CFG["eval"]
+    if pgrep(f"{S}/eval_policy.py"):
+        if not st.get("eval_orphans_logged"):
+            st["eval_orphans_logged"] = True
+            event("eval_waiting_for_orphaned_workers")
+        return None
+    st.pop("eval_orphans_logged", None)
+    srv = pgrep(f"policy_server.py --ckpt .* --port {E['port']}")
+    reuse = [p for p, c in srv if f"--ckpt {sft_out}/best " in c + " "]
+    for p, c in srv:                                               # our own orphaned server of another checkpoint
+        if p not in reuse:
+            os.killpg(p, signal.SIGTERM)
+            time.sleep(10)
     g = acquire(1, 1, E["server_min_free_mib"])
     if g is None:
         return None
     gpu = g[0]
     os.makedirs(out, exist_ok=True)
-    server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sft_out}/best",
-                 "--port", str(E["port"])], f"{out}/server.log", env={**env_pi(), "CUDA_VISIBLE_DEVICES": str(gpu)},
-                cwd=f"{L}/scripts/alphabot2_pi05")
-    t0 = time.time()
-    while time.time() - t0 < 1800 and server.poll() is None and "READY" not in open(f"{out}/server.log").read():
-        time.sleep(10)
-    if server.poll() is not None or "READY" not in open(f"{out}/server.log").read():
-        control([])
-        return {"blocked": "policy server failed to start", "log": open(f"{out}/server.log").read()[-1500:]}
-    ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
-             env={"EPISODES": ",".join(units), "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
-                  "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(h), "SEED_OFFSET": str(seed_offset)})
-          for w in range(E["workers"])]
-    for w in ws:
-        w.wait()
-    os.killpg(server.pid, signal.SIGTERM)
+    if reuse:
+        server_pid = reuse[0]
+        event("eval_server_adopted", pid=server_pid, out=out)
+    else:
+        server = sh([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/policy_server.py", "--ckpt", f"{sft_out}/best",
+                     "--port", str(E["port"])], f"{out}/server.log", env={**env_pi(), "CUDA_VISIBLE_DEVICES": str(gpu)},
+                    cwd=f"{L}/scripts/alphabot2_pi05")
+        server_pid = server.pid
+        t0 = time.time()
+        while time.time() - t0 < 1800 and server.poll() is None and "READY" not in open(f"{out}/server.log").read():
+            time.sleep(10)
+        if server.poll() is not None or "READY" not in open(f"{out}/server.log").read():
+            control([])
+            return {"blocked": "policy server failed to start", "log": open(f"{out}/server.log").read()[-1500:]}
+    for attempt in range(2):
+        ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
+                 env={"EPISODES": ",".join(units), "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
+                      "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(h), "SEED_OFFSET": str(seed_offset)})
+              for w in range(E["workers"])]
+        for w in ws:
+            w.wait()
+        missing = sorted(set(units) - set(r["unit"] for r in eval_rows(out)))
+        if not missing:
+            break
+        event("eval_units_missing_rerun", out=out, missing=len(missing), attempt=attempt)
+    try:
+        os.killpg(server_pid, signal.SIGTERM)
+    except OSError:
+        pass
     control([])
-    s = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out], capture_output=True, text=True)
+    s = json.loads(subprocess.run(["python3", f"{S}/eval_summary.py", out, ",".join(units)], capture_output=True, text=True)
                    .stdout.split("###EVAL_SUMMARY###", 1)[1])
     s.update({"h_exec": h, "h_pred": CFG["eval"]["h_pred"], "seed_offset": seed_offset})
-    if s["engineering_errors"] == s["episodes"]:
+    if s["engineering_errors"] == s["eval_count"]:
         return {"blocked": "every eval episode failed with an engineering error", "summary": s}
     return s
+
+
+def eval_rows(out):
+    rows = []
+    for i in range(100):
+        f = f"{out}/eval_w{i:02d}.jsonl"
+        if os.path.exists(f):
+            rows += [json.loads(l) for l in open(f) if l.strip()]
+    return rows
 
 
 def run_hsweep(j):
     """Choose the ONE execution horizon on a small fixed subset after the first balanced SFT, then freeze it."""
     E = CFG["eval"]
     _, sft_out, name = sft_config(j["round"], j["variant"])
-    uf = val_units()
-    if uf is None:
+    sp = eval_split()
+    if sp is None:
         return
-    units = [u["unit"] for u in json.load(open(uf))][: E["sweep_units"]]
+    units = sp["calibration"]
     j["status"] = "running"
     for h in E["h_exec_sweep"]:
         if str(h) in j["done_h"]:
@@ -407,10 +586,10 @@ def run_hsweep(j):
             return
         j["done_h"][str(h)] = s
         save()
-        event("hsweep_point", run=name, h_exec=h, full=f"{s['full_success_count']}/{s['overall']['n']}", overall=s["overall"])
+        event("hsweep_point", run=name, h_exec=h, full=f"{s['full_success_count']}/{s['eval_count']}", overall=s["overall"])
     stages = ("full", "place", "carry", "grasp", "find")
-    counts = {int(h): {k: int(round((s["overall"][k] or 0) * s["overall"]["n"])) for k in stages} for h, s in j["done_h"].items()}
-    n = max(s["overall"]["n"] for s in j["done_h"].values())
+    counts = {int(h): {k: int(s["counts"][k]) for k in stages} for h, s in j["done_h"].items()}
+    n = max(s["eval_count"] for s in j["done_h"].values())
     key = next((k for k in stages if max(c[k] for c in counts.values()) > 0), "find")
     best = max(c[key] for c in counts.values())
     tol = max(1, -(-n // 10))                                       # max(1, ceil(10% of n))
@@ -422,19 +601,21 @@ def run_hsweep(j):
     st["h_exec_frozen"] = int(chosen)
     j["status"] = "done"
     rec = {"chosen_h_exec": chosen, "preferred": pref, "compared_on_stage": key, "tolerance": tol, "units": n,
+           "calibration_split": f"{R}/eval_splits/{E['split']}_calib_eval.json", "calibration_units": units,
            "counts_by_h": counts, "h_pred": E["h_pred"], "note": "frozen for every later SFT/eval; not changed per round"}
     json.dump(rec, open(f"{R}/eval/{name}/hsweep_decision.json", "w"), indent=1)
     save()
-    event("h_exec_frozen", **rec)
+    event("h_exec_frozen", **{k: v for k, v in rec.items() if k != "calibration_units"})
+    write_run_info(j["round"])
 
 
 def run_eval(j):
     E = CFG["eval"]
     _, sft_out, name = sft_config(j["round"], j["variant"])
-    uf = val_units()
-    if uf is None or st.get("h_exec_frozen") is None:
+    sp = eval_split()
+    if sp is None or st.get("h_exec_frozen") is None:
         return                                                     # eval only with the frozen protocol
-    units = [u["unit"] for u in json.load(open(uf))]
+    units = sp["eval"]
     while j["pass"] < E["passes"]:
         j["status"] = "running"
         save()
@@ -448,7 +629,7 @@ def run_eval(j):
         j.setdefault("summaries", []).append(s)
         j["pass"] += 1
         save()
-        event("eval_pass_done", run=name, n=j["pass"], h_exec=s["h_exec"], success=f"{s['full_success_count']}/{s['overall']['n']}",
+        event("eval_pass_done", run=name, n=j["pass"], h_exec=s["h_exec"], success=f"{s['full_success_count']}/{s['eval_count']}",
               overall=s["overall"], by_hand=s["by_hand"])
     j["status"] = "done"
     decide(j, name)
@@ -470,12 +651,13 @@ def decide(j, name):
     k_min = CFG["eval"]["min_full_success_per_pass"]
     passes = []
     for s in ss:
-        n = s["overall"]["n"]
-        counts = {k: int(round((s["overall"][k] or 0) * n)) for k in stages}
-        passes.append({"eval_count": n, "success_count": s["full_success_count"],
+        n = s["eval_count"]
+        counts = {k: int(s["counts"][k]) for k in stages}
+        passes.append({"seed_offset": s.get("seed_offset"), "eval_count": n, "success_count": s["full_success_count"],
                        "success_rate": round(s["full_success_count"] / max(1, n), 4),
                        "success_rate_wilson95": wilson(s["full_success_count"], n),
-                       "funnel_counts": counts, "engineering_errors": s["engineering_errors"],
+                       "funnel_counts": counts, "funnel_rates": {k: round(counts[k] / max(1, n), 4) for k in stages},
+                       "funnel_labels": s.get("funnel_labels"), "engineering_errors": s["engineering_errors"],
                        "by_hand": s["by_hand"], "by_scene": s["by_scene"]})
     works = all(p["success_count"] >= k_min for p in passes)
     drop = None
@@ -497,7 +679,8 @@ def decide(j, name):
            "snapshot_accepted": st["rounds"][j["round"]].get("snapshot_accepted"),
            "sft": {k: sft_sum.get(k) for k in ("steps", "samples_seen", "effective_epochs", "train_episodes", "train_frames",
                                                "global_batch", "best_step", "best_val_loss")},
-           "eval_split": CFG["eval"]["split"], "val_funnel_full_to_feasible": st.get("val_funnel"),
+           "eval_split": CFG["eval"]["split"], "eval_units_file": f"{R}/eval_splits/{CFG['eval']['split']}_calib_eval.json",
+           "val_funnel_full_to_feasible": st.get("val_funnel"),
            "passes": passes, "criterion": f">= {k_min} full successes in every noise-seed pass",
            "works": works, "first_collapsing_stage": drop,
            "next": ("continue rounds; frontier/FP8/RL wait for the user's review" if works else
@@ -509,9 +692,81 @@ def decide(j, name):
         st["rounds"][j["round"]]["status"] = "decided_ok" if works else "decided_insufficient"
         if not works:
             st["halt_rounds"] = True
+        if CFG.get("stop_after_round") == j["round"]:              # stage complete: nothing new starts
+            st["halt_rounds"] = True
+            st["stage_complete"] = {"round": j["round"], "time": time.strftime("%F %T"), "decision": f"{R}/eval/{name}/decision.json",
+                                    "note": "stopped for the user's review; collection continues; RL/frontier never auto-start"}
+            for x in st["jobs"]:
+                if x["status"] in ("pending", "running") and x is not j:
+                    x["status"] = "deferred"
+            event("STAGE_COMPLETE", **st["stage_complete"])
     save()
+    write_run_info(j["round"])
     event("round_decision", run=name, works=works,
           success=[f"{p['success_count']}/{p['eval_count']}" for p in passes], first_collapsing_stage=drop)
+
+
+def write_run_info(rnd):
+    try:
+        _write_run_info(rnd)
+    except Exception as e:                                         # reporting must never stall a job transition
+        event("run_info_error", round=rnd, error=repr(e)[:300])
+
+
+def _write_run_info(rnd):
+    """RUNS/run_info/<round>.json (+ a copy next to the logs on CFS): everything needed to reproduce/read the round."""
+    ri = {"round": rnd, "updated": time.strftime("%F %T"), "scheduler_commit": subprocess.run(
+        ["git", "-C", L, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()}
+    mp = manifest_path(rnd)
+    if os.path.exists(mp):
+        m = json.load(open(mp))
+        ri["manifest"] = {"path": mp, "sha256": sha256(mp), "dataset_version": m["dataset_version"],
+                          "snapshot_cutoff": m["snapshot_cutoff"], "n_train": m["n_train"], "n_val": m["n_val"],
+                          "train_ids": m["train"], "val_ids": m["val"], "split_rule": m["split_rule"],
+                          "train_rule": m["train_rule"], "train_verification": m.get("train_verification")}
+        ri["code"] = {"collector_commits": m["collector_commits"], "expert_commit": m["code_versions"]["expert"],
+                      "reset_contract_commit": m["code_versions"]["reset_contract"],
+                      "policy_interface_commit": m["code_versions"]["policy_interface"], "reset_contract": m["reset_contract"]}
+    ds = {}
+    for split in ("train", "val"):
+        idx = f"{ds_dir(rnd, split)}/ovmm_episode_index.json"
+        if os.path.exists(idx):
+            d = json.load(open(idx))
+            ds[split] = {"root": d["root"], "episodes": len(d["episodes"]), "frames": d["frames"],
+                         "keep_settle": d["keep_settle"], "manifest_sha256": d.get("manifest_sha256")}
+            pio = f"{ds_dir(rnd, split)}/policy_io.json"
+            if os.path.exists(pio):
+                ds[split]["policy_io_sha256"] = sha256(pio)
+    ri["datasets"] = ds
+    gi = f"{R}/interface_gate/{rnd}/interface_gate.json"
+    if os.path.exists(gi):
+        g = json.load(open(gi))
+        ri["policy_interface_gate"] = {"path": gi, "pass": g.get("pass"), "checks": g.get("checks")}
+    ri["sft"] = {}
+    for v in ROUNDS[rnd]["variants"]:
+        cfg, out, name = sft_config(rnd, v)
+        e = {"config": cfg, "config_sha256": sha256(cfg), "out": out, "checkpoint": f"{out}/best"}
+        if os.path.exists(f"{out}/summary.json"):
+            e["summary"] = json.load(open(f"{out}/summary.json"))
+        ri["sft"][v] = e
+    E = CFG["eval"]
+    sp = f"{R}/eval_splits/{E['split']}_calib_eval.json"
+    if os.path.exists(sp):
+        d = json.load(open(sp))
+        ri["eval_split"] = {k: d[k] for k in ("split", "source", "source_sha256", "rule", "n_calibration", "n_eval",
+                                              "scenes_calibration", "scenes_eval", "calibration_sha256", "eval_sha256")}
+        ri["eval_split"]["path"] = sp
+    ri["h_exec"] = {"frozen": st.get("h_exec_frozen"), "h_pred": E["h_pred"], "sweep": E["h_exec_sweep"],
+                    "preferred": E["h_exec_preferred"]}
+    for v in ROUNDS[rnd]["variants"]:
+        name = f"{rnd}_{v}"
+        for k, f in (("hsweep_decision", f"{R}/eval/{name}/hsweep_decision.json"), ("eval_decision", f"{R}/eval/{name}/decision.json")):
+            if os.path.exists(f):
+                ri.setdefault("eval", {}).setdefault(v, {})[k] = f
+    for d in (f"{R}/run_info", os.path.join(os.path.dirname(LOGS), "run_info")):
+        os.makedirs(d, exist_ok=True)
+        json.dump(ri, open(f"{d}/{rnd}.json.tmp", "w"), indent=1, default=str)
+        os.replace(f"{d}/{rnd}.json.tmp", f"{d}/{rnd}.json")
 
 
 def run_jobs():
@@ -572,6 +827,13 @@ def pilot_replay_check():
 
 
 def main():
+    lock = open("/dev/shm/lmm_gpu_scheduler.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)            # exactly one scheduler
+    except OSError:
+        print("another gpu_scheduler holds /dev/shm/lmm_gpu_scheduler.lock; exiting", flush=True)
+        sys.exit(0)
+    main.lock = lock
     event("scheduler_start", rounds=ORDER)
     ok, info = pilot_replay_check()
     event("pilot_replay_check", ok=ok, **info)
@@ -583,6 +845,7 @@ def main():
     while True:
         try:
             ensure_collection()
+            ensure_val_screen()
             check_data()
             run_jobs()
         except Exception as e:                                     # never die silently

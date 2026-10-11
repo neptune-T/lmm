@@ -26,7 +26,7 @@ Episodes with a results row from any worker are skipped (resume after a crash/re
 
     EPISODES=... OUT=... run_habitat.sh pilot.py
 """
-import glob, json, os, sys, time, traceback, zlib
+import glob, json, os, subprocess, sys, time, traceback, zlib
 
 import numpy as np
 
@@ -147,6 +147,11 @@ def release(eid):
             f.write("done")
 
 
+try:                                                               # provenance: the code this worker runs
+    CODE_COMMIT = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"], capture_output=True,
+                                 text=True).stdout.strip()
+except OSError:
+    CODE_COMMIT = ""
 n_ok = 0
 res_f = open(f"{OUT}/results_w{WK:02d}.jsonl", "a")
 for eid in EPS:
@@ -157,7 +162,7 @@ for eid in EPS:
     t0 = time.time()
     ep_id, rep = HE.parse_unit(eid)
     rec = {"episode_id": eid, "episode": ep_id, "replica": rep, "seed": HE.episode_seed(ep_id, rep),
-           "worker": WK, "arm_mode": ARM_MODE}
+           "worker": WK, "arm_mode": ARM_MODE, "code_commit": CODE_COMMIT}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
            "state": [], "base": []}
     try:
@@ -251,6 +256,7 @@ for eid in EPS:
         rec["engineering_error"] = repr(e)
         rec["tb"] = traceback.format_exc()[-1500:]
     rec["wall_s"] = round(time.time() - t0, 1)
+    rec["finished_at"] = time.strftime("%F %T")
     FS.append_line(res_f.name, json.dumps(rec, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o)))
     release(eid)
     print("PILOT", json.dumps({k: rec.get(k) for k in ("episode_id", "arm", "success", "accepted", "failure",

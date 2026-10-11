@@ -15,8 +15,12 @@ crc32(episode) % 1000 < val_permille -> "val" (SFT validation loss only; never u
 Only episodes the collector accepted (OVMM success + fresh-reset replay) are read.
 
     python ovmm_to_lerobot.py --src /workspace/runtime/runs/collect_v1 --split train --out DIR [--png]
+    python ovmm_to_lerobot.py --src RUN --manifest M.json --split train --out DIR    (SFT rounds: frozen IDs)
+
+With --manifest (make_manifest.py) exactly the manifest's IDs for the split are converted, in its order;
+the growing collection is not scanned for membership. Every ID must be an accepted row.
 """
-import argparse, glob, json, os, shutil, sys, time, zlib
+import argparse, glob, hashlib, json, os, shutil, sys, time, zlib
 from pathlib import Path
 
 import numpy as np
@@ -52,7 +56,8 @@ def main():
     ap.add_argument("--split", required=True, choices=("train", "val"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--val-permille", type=int, default=50)
-    ap.add_argument("--max-episodes", type=int, default=0, help="0 = all accepted")
+    ap.add_argument("--max-episodes", type=int, default=0, help="0 = all accepted (ignored with --manifest)")
+    ap.add_argument("--manifest", default=None, help="frozen round manifest: convert exactly its IDs")
     ap.add_argument("--keep-settle", type=int, default=5,
                     help="post-release 'settle' frames kept per episode (the OVMM stability window is not SFT behaviour)")
     ap.add_argument("--png", action="store_true", help="lossless PNG frames instead of video (millions of files)")
@@ -69,12 +74,23 @@ def main():
     ds = LeRobotDataset.create(repo_id=f"local/alphabot2_ovmm_{args.split}", fps=10, features=features, root=args.out,
                                robot_type="alphabot2_habitat_ovmm", use_videos=not args.png,
                                image_writer_threads=args.writer_threads)
-    rows = []
-    for s in args.src:
-        rows += [r for r in accepted(s).values() if split_of(r.get("episode") or r["episode_id"], args.val_permille) == args.split]
-    rows.sort(key=lambda r: str(r["episode_id"]))
-    if args.max_episodes:
-        rows = rows[: args.max_episodes]
+    manifest = None
+    if args.manifest:
+        manifest = json.loads(Path(args.manifest).read_text())
+        acc = {}
+        for s in args.src:
+            acc.update(accepted(s))
+        missing = [u for u in manifest[args.split] if u not in acc]
+        if missing:
+            raise RuntimeError(f"manifest ids not accepted in {args.src}: {missing[:10]}")
+        rows = [acc[u] for u in manifest[args.split]]
+    else:
+        rows = []
+        for s in args.src:
+            rows += [r for r in accepted(s).values() if split_of(r.get("episode") or r["episode_id"], args.val_permille) == args.split]
+        rows.sort(key=lambda r: str(r["episode_id"]))
+        if args.max_episodes:
+            rows = rows[: args.max_episodes]
     stage_names, fm = {}, {k: [] for k in ("episode_index", "frame_index", "stage", "v", "omega", "arm", "scene")}
     scenes, used = {}, []
     t0 = time.time()
@@ -123,6 +139,8 @@ def main():
     Path(args.out, "policy_io.json").write_text(json.dumps(IO.describe(), indent=1))
     out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "keep_settle": args.keep_settle,
            "episodes": used, "policy_io": IO.describe(),
+           "manifest": args.manifest, "dataset_version": manifest.get("dataset_version") if manifest else None,
+           "manifest_sha256": hashlib.sha256(Path(args.manifest).read_bytes()).hexdigest() if args.manifest else None,
            "frames": int(sum(u["frames"] for u in used)), "camera_map": CAM_MAP, "video": not args.png,
            "features": {k: v["shape"] for k, v in features.items()}, "wall_s": round(time.time() - t0, 1)}
     Path(args.out, "ovmm_episode_index.json").write_text(json.dumps(out, indent=1, default=str))
