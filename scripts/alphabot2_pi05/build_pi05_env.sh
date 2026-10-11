@@ -1,6 +1,6 @@
 #!/bin/bash
 # pi0.5 SFT / policy-server env on the user's CFS (NFS: symlinks + exec work; not bosfs, not /dev/shm).
-# Python 3.12 venv; torch 2.8.0+cu126 (driver 535 OK, qualified on the old A800); lerobot[pi]==0.6.1.
+# Python 3.12 venv; torch 2.8.0+cu126 (driver 535 OK, qualified on the old A800); lerobot[pi,dataset]==0.6.1.
 # All caches/temp on CFS (root has ~1.5 GB). Verifies against the fetched public checkpoint.
 #     PI05_ENV=/mnt/cfs/.../envs/alphabot2_pi05 bash build_pi05_env.sh
 set -euxo pipefail
@@ -16,7 +16,7 @@ $P -m pip install -q -U pip $TUNA
 TORCH_INDEX=${TORCH_INDEX:-https://mirrors.nju.edu.cn/pytorch/whl/cu126}
 $P -m pip install -q "torch==2.8.0" "torchvision==0.23.0" --index-url $TORCH_INDEX \
   || $P -m pip install -q "torch==2.8.0" "torchvision==0.23.0" --index-url https://download.pytorch.org/whl/cu126
-$P -m pip install -q "lerobot[pi]==0.6.1" sentencepiece pyyaml av $TUNA
+$P -m pip install -q "lerobot[pi,dataset]==0.6.1" sentencepiece pyyaml av $TUNA
 $P - <<PY
 import torch, lerobot, transformers
 from lerobot.policies.pi05.modeling_pi05 import PI05Policy
