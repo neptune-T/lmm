@@ -54,7 +54,22 @@ if eid:
     act = HE.action_obj(env)
     box = {}
 
+    trace = []
+
     def on_step(cart, stage, r):
+        if os.environ.get("TRACE_HOLD") and stage in ("grasp", "lift", "carry", "navigate_to_receptacle"):
+            ad = env.sim.get_agent_data(0)
+            rob_ = HE.robot(env)
+            obj_, _ = ex.target_object()
+            row = {"t": ex.t, "stage": stage, "active_idx": getattr(ad, "active_grasp_manager_idx", None)}
+            for i, m in enumerate(ad.grasp_mgrs):
+                row[f"m{i}"] = {"grasped": bool(m.is_grasped), "ee_index": getattr(m, "ee_index", None),
+                                "dist_own_ee": round(float(np.linalg.norm(np.array(rob_.ee_transform(m.ee_index).translation) - np.array(obj_.translation))), 4)}
+            row["dist_left_ee"] = round(float(np.linalg.norm(np.array(rob_.ee_transform(0).translation) - np.array(obj_.translation))), 4)
+            row["dist_right_ee"] = round(float(np.linalg.norm(np.array(rob_.ee_transform(1).translation) - np.array(obj_.translation))), 4)
+            if not trace or trace[-1]["stage"] != stage or any(trace[-1][f"m{i}"]["grasped"] != row[f"m{i}"]["grasped"] for i in (0, 1)) \
+                    or len(trace) < 3 or ex.t % 25 == 0:
+                trace.append(row)
         if stage != "grasp" or "diag" in box:
             return
         rob = HE.robot(env)
@@ -98,7 +113,8 @@ if eid:
         res = "completed"
     except Exception as e:
         res = repr(e)
-    rep["grasp"] = {"episode": eid, "arm": side, "result": res, "events": ex.events,
+    rep["grasp"] = {"episode": eid, "arm": side, "result": res, "events": ex.events, "hold_trace": trace[:80],
+                    "hold_thresh": float(env.sim.get_agent_data(0).grasp_mgrs[0]._config.hold_thresh),
                     "nav_to_object": ex.log.get("nav_to_object"), "diag": box.get("diag")}
     print("GRASP", json.dumps(rep["grasp"], default=str), flush=True)
 out = os.environ.get("OUT", "/workspace/runtime/runs/diag")
