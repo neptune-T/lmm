@@ -36,6 +36,8 @@ from .alphabot2_robot import HOME, NAV_TUCK, REACH_M, SIDES
 MAX_APERTURE_M = 0.0804            # fully open pad-SURFACE gap (xacro collision meshes, gripper_gap.py)
 SETTLE_REST_STEPS = 55             # > OVMM stability_steps (50) consecutive at-rest steps after release
 SETTLE_MAX_STEPS = int(__import__("os").environ.get("ALPHABOT2_SETTLE_MAX_STEPS", "300"))   # 30 s cap
+RETRACT_LIFT_M = 0.12             # vertical lift of the releasing hand before anything else moves
+RETRACT_BACK_V, RETRACT_BACK_STEPS = 0.2, 10    # then back the base off 0.2 m before tucking
 PLACE_ROBUST_M = 0.03              # place IK must survive +-3 cm (base arrival error), as for picks
 MAX_GRASP_WIDTH_M = 0.072          # widest object planned across the fingers (0.8 cm margin)
 MIN_GRASP_WIDTH_M = 0.016
@@ -540,7 +542,14 @@ class OVMMExpert:
         self.hold(6, grips={"left": 0.0, "right": 0.0})
         self.events.append((self.t, f"release_{side}"))
         self.set_stage("retract")
-        self.joint_move({side: rp.q}, 10, grips={"left": 0.0, "right": 0.0})
+        # Measured: tucking straight from the place pose swept the arm back through the just-placed object
+        # (object at rest on the goal, then knocked at up to 4 rad/s during the tuck). Lift vertically,
+        # back the base away with the arms still, and only then tuck.
+        self.line(side, [0.0, 0.0, RETRACT_LIFT_M], 12, grip=0.0)
+        for _ in range(RETRACT_BACK_STEPS):
+            c = self.cart_now()
+            c[16], c[17] = -RETRACT_BACK_V, 0.0
+            self.step(c)
         self.joint_move({s: np.array(NAV_TUCK[s]) for s in SIDES}, 20, grips={"left": 0.0, "right": 0.0})
         self.set_stage("settle")   # post-release settle: simulator/OVMM success only, not SFT behaviour
         # OVMM place success needs the object on the goal, at rest and released for stability_steps (50)

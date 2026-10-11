@@ -155,6 +155,10 @@ try:
 except (OSError, ValueError):
     bad = set()
 bad_eps = {b.split("#")[0] for b in bad}
+try:   # explicit RESET_NONDETERMINISTIC (context-dependent reset failures the audit did not reproduce)
+    bad_eps |= {e["episode_id"] for e in json.load(open("$RUNS/feasibility/manual_exclusions.json"))["reset_nondeterministic"]}
+except (OSError, ValueError, KeyError):
+    pass
 final = [u for u in U if u["episode_id"] not in bad_eps]
 json.dump(final, open("$RUNS/feasibility/units_train_final.json", "w"))
 json.dump({"excluded_reset_nondeterministic_episodes": sorted(bad_eps), "units_v2": len(U), "units_final": len(final)},

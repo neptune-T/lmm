@@ -99,7 +99,7 @@ if eid:
             if not trace or trace[-1]["stage"] != stage or any(trace[-1][f"m{i}"]["grasped"] != row[f"m{i}"]["grasped"] for i in (0, 1)) \
                     or len(trace) < 3 or ex.t % 25 == 0:
                 trace.append(row)
-        if os.environ.get("TRACE_PLACE") and stage in ("release", "retract", "done"):
+        if os.environ.get("TRACE_PLACE") and stage in ("release", "retract", "settle", "done"):
             m = env.get_metrics()
             obj_, _ = ex.target_object()
             pick = lambda k: (m.get(k) if not isinstance(m.get(k), dict) else {kk: float(vv) for kk, vv in m.get(k).items()})
