@@ -101,8 +101,33 @@ def collect_status():
         return {}
 
 
+class Adopted:
+    """A collection supervisor left running by a previous scheduler (own session; survives our restart)."""
+
+    def __init__(self, pid):
+        self.pid, self.returncode = pid, None
+
+    def poll(self):
+        try:
+            os.kill(self.pid, 0)
+            return None
+        except OSError:
+            self.returncode = -1
+            return -1
+
+
+def running_supervisor():
+    r = subprocess.run(["pgrep", "-f", f"{S}/collect_supervisor.py"], capture_output=True, text=True)
+    pids = [int(x) for x in r.stdout.split() if int(x) != os.getpid()]
+    return pids[0] if pids else None
+
+
 def ensure_collection():
     p = procs.get("collect")
+    if p is None and running_supervisor():
+        procs["collect"] = Adopted(running_supervisor())
+        event("collection_supervisor_adopted", pid=procs["collect"].pid)
+        return
     if p is not None and p.poll() is None:
         return
     if p is not None:
