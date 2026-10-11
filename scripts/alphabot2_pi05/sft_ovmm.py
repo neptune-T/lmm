@@ -9,7 +9,9 @@ VAL flow-matching loss with fixed noise for checkpoint selection. Added here:
   * sampling from sampling.py (phase_balanced or uniform; frame_meta.npz is sampler-only);
   * atomic checkpoints (model + optimizer + step) every ckpt_every steps; on start the newest complete
     checkpoint is resumed; best-by-VAL and last are kept as plain policy dirs;
-  * heartbeat.json (step, time) for the scheduler; train_log.jsonl.
+  * heartbeat.json (step, time) for the scheduler; train_log.jsonl;
+  * loss masked on action_is_pad (chunk steps past the episode end are clamped copies of the last frame;
+    PI05Policy.forward would train them as targets).
 Exit codes: 0 done, 3 non-finite loss (not retried by the scheduler), other = crash (retried).
 
     torchrun --nproc_per_node N sft_ovmm.py --config configs/alphabot2_pi05/sft_ovmm_balanced.yaml
@@ -95,9 +97,10 @@ def main():
 
     policy, pre, post = ovmm_model.build(cfg, src, C["init_checkpoint"], stats, device=dev)
     params = [p for p in policy.parameters() if p.requires_grad]
-    model = policy
+    # loss excludes chunk steps past the episode end (action_is_pad); see ovmm_model.masked_loss
+    model = ovmm_model.MaskedLoss(policy)
     if ddp:
-        model = torch.nn.parallel.DistributedDataParallel(policy, device_ids=[torch.cuda.current_device()],
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[torch.cuda.current_device()],
                                                           gradient_as_bucket_view=True,
                                                           find_unused_parameters=bool(C.get("ddp_find_unused", True)))
         from torch.distributed.optim import ZeroRedundancyOptimizer
@@ -138,7 +141,7 @@ def main():
         tot, n, pdim = 0.0, 0, np.zeros(18)
         for b in vloader:
             with amp:
-                loss, inf = policy.forward(pre(b))
+                loss, inf = ovmm_model.masked_loss(policy, pre(b), b["action_is_pad"])
             k = len(b["action"])
             tot, n = tot + float(loss) * k, n + k
             pdim += np.asarray(inf["loss_per_dim"]) * k
@@ -180,7 +183,7 @@ def main():
         for g in opt.param_groups:
             g["lr"] = lr
         with amp:
-            loss, inf = model(pre(batch))
+            loss, inf = model(pre(batch), batch["action_is_pad"])
         if not torch.isfinite(loss):
             print(f"NONFINITE loss at step {step}", flush=True)
             sys.exit(3)

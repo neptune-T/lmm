@@ -52,3 +52,46 @@ def build(cfg, weights, init_ckpt, stats, device="cuda"):
         postprocessor_overrides={"unnormalizer_processor": {"stats": stats, "features": cfg.output_features,
                                                             "norm_map": cfg.normalization_mapping}})
     return policy, pre, post
+
+
+# --------------------------------------------------------------------------- padded-target-masked SFT loss
+from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS  # noqa: E402
+import torch  # noqa: E402
+
+
+def masked_loss(policy, batch, action_is_pad=None):
+    """PI05Policy.forward's flow-matching loss with chunk steps beyond the episode end EXCLUDED.
+
+    lerobot 0.6.1 clamps chunk indices past the episode end to the last frame and flags them
+    action_is_pad, but PI05Policy.forward ignores the flag, so padded copies of the final (post-release)
+    action would be trained as real targets. Same preprocessing, noise/time sampling and model call as
+    PI05Policy.forward; only the reduction differs. action_is_pad: (B, chunk) bool from the RAW batch."""
+    images, img_masks = policy._preprocess_images(batch)
+    tokens, masks = batch[OBS_LANGUAGE_TOKENS], batch[OBS_LANGUAGE_ATTENTION_MASK]
+    actions = policy.prepare_action(batch)
+    noise = policy.model.sample_noise(actions.shape, actions.device)
+    time = policy.model.sample_time(actions.shape[0], actions.device)
+    losses = policy.model.forward(images, img_masks, tokens, masks, actions, noise, time)
+    d = policy.config.output_features["action"].shape[0]
+    losses = losses[:, :, :d]
+    if action_is_pad is None:
+        valid = torch.ones(losses.shape[:2], device=losses.device)
+    else:
+        valid = (~action_is_pad.to(losses.device).bool()).float()
+    w = valid[:, :, None]
+    n = w.sum().clamp_min(1.0)
+    loss = (losses * w).sum() / (n * d)
+    per_dim = (losses * w).sum(dim=(0, 1)) / n
+    return loss, {"loss_per_dim": per_dim.detach().float().cpu().numpy().tolist(), "loss": float(loss),
+                  "valid_target_fraction": float(valid.mean())}
+
+
+class MaskedLoss(torch.nn.Module):
+    """Wraps the policy so DDP sees one forward (gradient sync) while the loss masks padded targets."""
+
+    def __init__(self, policy):
+        super().__init__()
+        self.policy = policy
+
+    def forward(self, batch, action_is_pad):
+        return masked_loss(self.policy, batch, action_is_pad)

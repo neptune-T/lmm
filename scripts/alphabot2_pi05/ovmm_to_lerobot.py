@@ -121,7 +121,8 @@ def main():
              stage_names=np.asarray(sorted(stage_names, key=stage_names.get)),
              scene_names=np.asarray(sorted(scenes, key=scenes.get)))
     Path(args.out, "policy_io.json").write_text(json.dumps(IO.describe(), indent=1))
-    out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "episodes": used, "policy_io": IO.describe(),
+    out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "keep_settle": args.keep_settle,
+           "episodes": used, "policy_io": IO.describe(),
            "frames": int(sum(u["frames"] for u in used)), "camera_map": CAM_MAP, "video": not args.png,
            "features": {k: v["shape"] for k, v in features.items()}, "wall_s": round(time.time() - t0, 1)}
     Path(args.out, "ovmm_episode_index.json").write_text(json.dumps(out, indent=1, default=str))

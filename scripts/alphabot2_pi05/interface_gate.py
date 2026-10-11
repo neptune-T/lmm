@@ -14,6 +14,11 @@ Runs in the pi0.5 env on the round's converted TRAIN dataset and the real collec
                omega, which have no checkpoint stats); normalize -> unnormalize round trip.
   D  horizon   chunk_size 50 (prediction) vs explicit 1 <= H_exec <= 50 (execution); recorded.
   E  smoke     one finite training loss; predict_action_chunk -> (1, 50, 18) finite.
+  F  horizon   post-release settle truncated at conversion (<= keep_settle frames, at the tail) i.e. before
+     boundary  any 50-step chunk exists; tail chunks: action_is_pad pattern exact and padded targets are
+               clamped copies of the last frame; the SFT loss (ovmm_model.masked_loss) ignores padded
+               targets (corrupting them leaves it unchanged; the unmasked loss changes); no training window
+               has more than keep_settle real settle targets.
 Writes OUT/interface_gate.json and OUT/interface_frame.png; prints ###GATE###; exit 1 on any failure.
 
     python interface_gate.py --config ROUND_SFT_YAML --collect COLLECT_DIR --h-exec 5 --out DIR
@@ -29,6 +34,7 @@ import ovmm_model  # noqa: E402
 import sampling  # noqa: E402
 from ovmm_model import IO  # noqa: E402
 from lmm.embodiments.alphabot2.ovmm_chain_check import lowering_chain  # noqa: E402
+from lmm.embodiments.alphabot2.ovmm_sft_windows import expected_pad, window_exposure  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata  # noqa: E402
 
@@ -171,6 +177,57 @@ def main():
     rep["E"] = {"loss_absent": float(loss3), "loss_masked": float(loss4), "masks_with_front": [bool(m[0]) for m in masks4],
                 "n_images_absent": len(imgs3), "chunk_shape": list(chunk.shape),
                 "chunk_first_step": chunk[0, 0].tolist(), "label_first_step": batch["action"][0, 0].tolist()}
+
+    # ---------------- F: action-horizon boundary (settle truncation, tail padding, masked loss)
+    keep = int(index.get("keep_settle", 5))
+    fm = dict(np.load(Path(C["train_data"]) / "frame_meta.npz"))
+    names = [str(x) for x in fm["stage_names"]]
+    sid = names.index("settle") if "settle" in names else -1
+    epi, stg = np.asarray(fm["episode_index"]), np.asarray(fm["stage"])
+    trunc_ok, tail_ok = True, True
+    for e in index["episodes"]:
+        m = epi == e["episode_index"]
+        s_ = stg[m] == sid
+        if s_.sum() > keep or (s_.any() and not s_[np.argmax(s_):].all()):
+            tail_ok = False
+        if e.get("frames_raw") is not None and e["frames"] != e["frames_raw"] - e.get("settle_frames_dropped", 0):
+            trunc_ok = False
+    ok["F_settle_truncated_before_chunking"] = trunc_ok and tail_ok and len(fm["episode_index"]) == len(ds)
+    # tail padding of the real episode used above: pattern and clamped values
+    pad_ok, clamp_ok = True, True
+    last_action = low["action"][T - 1]
+    for t in (T - 1, T - 10, T - 30):
+        if t < 0:
+            continue
+        it = ds[start + t]
+        pad = it["action_is_pad"].numpy().astype(bool)
+        pad_ok &= bool((pad == expected_pad(T, t, cfg.chunk_size)).all())
+        if pad.any():
+            clamp_ok &= bool(np.abs(it["action"].numpy()[pad] - last_action).max() < 1e-5)
+    ok["F_tail_pad_pattern"] = pad_ok
+    ok["F_tail_pad_clamped_to_last_frame"] = clamp_ok
+    # masked loss ignores padded targets; the unmasked loss does not
+    it = ds[start + max(0, T - 10)]
+    raw = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in it.items() if k.startswith(("observation", "action", "task"))}
+    corrupt = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in raw.items()}
+    pm = raw["action_is_pad"][0].bool()
+    corrupt["action"][0, pm] = 100.0
+
+    def seeded(b, use_mask):
+        x = pre(dict(b))
+        torch.manual_seed(77)
+        torch.cuda.manual_seed_all(77)
+        return float(ovmm_model.masked_loss(policy, x, b["action_is_pad"] if use_mask else None)[0])
+
+    with torch.no_grad(), torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+        lm, lm_c = seeded(raw, True), seeded(corrupt, True)
+        lu, lu_c = seeded(raw, False), seeded(corrupt, False)
+    ok["F_masked_loss_ignores_padded_targets"] = bool(pm.any()) and abs(lm - lm_c) <= 1e-5 * max(1.0, abs(lm)) and abs(lu - lu_c) > 1e-3
+    exp = window_exposure(epi, stg, sid, cfg.chunk_size)
+    ok["F_settle_exposure_bounded"] = exp["max_settle_targets_per_window"] <= keep
+    rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "masked_loss": lm, "masked_loss_corrupted_pads": lm_c,
+                "unmasked_loss": lu, "unmasked_loss_corrupted_pads": lu_c, "window_exposure": exp,
+                "settle_frames_dropped_total": int(sum(e.get("settle_frames_dropped", 0) for e in index["episodes"]))}
 
     # ---------------- one-frame visualization
     try:
