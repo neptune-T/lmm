@@ -81,6 +81,7 @@ def reset_to(env, episode_id, replica: int = 0):
     # Bullet world, which made object dynamics depend on earlier episodes in the process (pilot replay
     # rejections). A/B (8 units, one long-lived process): identical start poses; the history-dependent
     # divergence disappears; what remains is the placed target's own rotation after release (tipping).
+    scene = env._alphabot2_raw[str(episode_id)].scene_id
     env.sim.prev_scene_id = None                  # force the hard rebuild ...
     env.sim._prev_obj_names = None
     env.seed(episode_seed(episode_id, replica))   # ... of a throw-away reset (also loads the navmesh, which
