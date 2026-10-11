@@ -42,7 +42,9 @@ from lmm.embodiments.alphabot2.habitat.expert import OVMMExpert  # noqa: E402
 OUT = os.environ.get("OUT", "/workspace/runtime/runs/pilot")
 os.makedirs(f"{OUT}/episodes", exist_ok=True)
 CAMS = ("head_rgb", "left_wrist_rgb", "right_wrist_rgb")
-REPLAY_TOL = {"root_max_abs": 1e-5, "proprio_max_abs": 1e-6, "objects_max_abs": 0.025}
+# fresh-reset replay tolerances; positions and rotations separately (no mixed max over matrix entries)
+REPLAY_TOL = {"root_pos_m": 1e-5, "root_rot_deg": 1e-3, "proprio_max_abs": 1e-6,
+              "objects_pos_max_m": 0.025, "objects_rot_max_deg": 5.0}
 
 
 def save_npz(path, **arrays):
@@ -218,19 +220,13 @@ for eid in EPS:
                 HE.step18(env, a)
                 rep_states.append(SN.state_vector(env))
             d = [SN.divergence(a, b) for a, b in zip(rep_states, buf["state"])]
-            rec["replay"] = {"start_fix_equal": fix2 == rec["start_fix"], "steps": len(d),
-                             "root_max_abs": max(x["root_max_abs"] for x in d),
-                             "proprio_max_abs": max(x["proprio_max_abs"] for x in d),
-                             "objects_max_abs": max(x["objects_max_abs"] for x in d),
-                             "held_equal_all": all(x["held_equal"] for x in d),
+            md = SN.max_divergence(d)
+            rec["replay"] = {"start_fix_equal": fix2 == rec["start_fix"], "steps": len(d), **md,
+                             "held_equal_all": md["held_equal"],
                              "place_success": metrics().get("ovmm_place_success"), "wall_s": round(time.time() - t1, 1)}
-            # fresh-reset replay acceptance (tolerances as the snapshot gate's; exact equality rejected
-            # float32 noise of ~1e-6 m in the root transform):
             rec["replay"]["tolerances"] = REPLAY_TOL
             rec["accepted"] = bool(rec["replay"]["place_success"] and rec["replay"]["held_equal_all"]
-                                   and rec["replay"]["root_max_abs"] <= REPLAY_TOL["root_max_abs"]
-                                   and rec["replay"]["proprio_max_abs"] <= REPLAY_TOL["proprio_max_abs"]
-                                   and rec["replay"]["objects_max_abs"] <= REPLAY_TOL["objects_max_abs"])
+                                   and all(rec["replay"][k] <= v for k, v in REPLAY_TOL.items()))
             d_ep = f"{OUT}/episodes/{str(eid).replace('#', '_r')}"
             rec["dir"] = d_ep
             os.makedirs(d_ep, exist_ok=True)

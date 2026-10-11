@@ -2,7 +2,7 @@
   "_doc": "gpu_scheduler.py: collection always runs; tiered SFT rounds start in parallel once each round's data gate passes; each round: policy-interface gate (lowering chain, cameras, normalization) before SFT; balanced SFT evaluated end-to-end from normal OVMM init before the next round is created. H_exec is ONE frozen control protocol: chosen once by a small {1,5,10} sweep after sanity_v1 (prefer 5), then fixed for every later SFT/eval; H_pred stays 50. Eval reports success_count/eval_count per noise-seed pass. Thresholds are presets of this restore.",
   "runs": "/workspace/runtime/runs",
   "collect": {
-    "out": "/workspace/runtime/runs/collect_v1",
+    "out": "/workspace/runtime/runs/collect_clean_v1",
     "units_file": "/workspace/runtime/runs/lists/collect_train.txt",
     "start_gpus": [
       1
@@ -88,5 +88,7 @@
   "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs",
   "data_gate_max_replay_reject_fraction": 0.2,
   "pilot_max_replay_reject_fraction": 0.1,
-  "data_gate_max_replay_reject_fraction_note": "engineering alarm only (not a correctness threshold); replay-rejected trajectories never enter any dataset"
+  "data_gate_max_replay_reject_fraction_note": "engineering alarm only (not a correctness threshold); replay-rejected trajectories never enter any dataset",
+  "pilot_gate": "pilot_clean",
+  "reset_contract": "hard world rebuild -> seeded task reset -> episode (frozen; no soft-reset path)"
 }

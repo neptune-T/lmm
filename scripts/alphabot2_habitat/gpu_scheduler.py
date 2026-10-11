@@ -533,7 +533,7 @@ def pilot_replay_check():
                 r = json.loads(l)
             except ValueError:
                 continue
-            if r.get("gate") == "pilot" and r.get("pass"):
+            if r.get("gate") == CFG.get("pilot_gate", "pilot_clean") and r.get("pass"):
                 pil = r
     except OSError:
         pass

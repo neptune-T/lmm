@@ -122,8 +122,35 @@ def state_vector(env) -> dict:
             "held": [m._snapped_obj_id for m in sim.get_agent_data(0).grasp_mgrs]}
 
 
+def _rot_deg(Ra, Rb) -> float:
+    c = (np.trace(np.asarray(Ra).T @ np.asarray(Rb)) - 1.0) / 2.0
+    return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+
+
 def divergence(a: dict, b: dict) -> dict:
-    return {"root_max_abs": float(np.max(np.abs(a["root"] - b["root"]))),
+    """Position and rotation errors reported SEPARATELY (never a mixed max over matrix entries):
+    robot root position (m) / rotation (deg), joint proprio (max abs), every scene object's position (m)
+    and rotation (deg) -- max over objects, with the worst object's index -- and held-object equality."""
+    ra, rb = np.asarray(a["root"]), np.asarray(b["root"])
+    oa, ob = np.asarray(a["objects"]).reshape(-1, 3, 4), np.asarray(b["objects"]).reshape(-1, 3, 4)
+    pos = np.linalg.norm(oa[:, :, 3] - ob[:, :, 3], axis=1) if len(oa) else np.zeros(0)
+    rot = np.array([_rot_deg(x[:, :3], y[:, :3]) for x, y in zip(oa, ob)]) if len(oa) else np.zeros(0)
+    return {"root_pos_m": float(np.linalg.norm(ra[:3, 3] - rb[:3, 3])), "root_rot_deg": _rot_deg(ra[:3, :3], rb[:3, :3]),
             "proprio_max_abs": float(np.max(np.abs(a["proprio"] - b["proprio"]))),
-            "objects_max_abs": float(np.max(np.abs(a["objects"] - b["objects"]))),
+            "objects_pos_max_m": float(pos.max()) if len(pos) else 0.0,
+            "objects_rot_max_deg": float(rot.max()) if len(rot) else 0.0,
+            "objects_pos_worst_idx": int(pos.argmax()) if len(pos) else None,
+            "objects_rot_worst_idx": int(rot.argmax()) if len(rot) else None,
             "held_equal": a["held"] == b["held"]}
+
+
+METRICS = ("root_pos_m", "root_rot_deg", "proprio_max_abs", "objects_pos_max_m", "objects_rot_max_deg")
+
+
+def max_divergence(ds: list) -> dict:
+    """Per-metric maximum over a trajectory of divergence() dicts (+ held equality at every step)."""
+    if not ds:
+        return None
+    out = {k: max(d[k] for d in ds) for k in METRICS}
+    out["held_equal"] = all(d["held_equal"] for d in ds)
+    return out

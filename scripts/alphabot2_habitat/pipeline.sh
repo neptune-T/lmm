@@ -11,7 +11,7 @@ LOGS=${ALPHABOT2_LOG_DIR:-/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/l
 mkdir -p $LOGS $RUNS/lists
 note() { echo "{\"time\": \"$(date '+%F %T')\", \"stage\": \"$1\", \"event\": \"$2\"}" >> $ST; echo "$(date '+%F %T') $1 $2"; }
 passed() { grep -q "\"gate\": \"$1\", \"pass\": true" $ST 2>/dev/null; }
-gate() {   # gate NAME ARGS...
+gate() {   # gate NAME ARGS...   (GATE_NAME=... records the result under another name)
   local name=$1; shift
   local out; out=$($RUN $S/gates.py $name "$@" 2>>$LOGS/gates.err | grep '###GATE###' | sed 's/^###GATE###//')
   [ -n "$out" ] || out="{\"gate\": \"$name\", \"pass\": false, \"error\": \"gate produced no output\"}"
@@ -199,14 +199,18 @@ PY
   note embodiment_final lists_frozen
   echo '{"gate": "embodiment_final", "pass": true}' >> $ST; }
 
-# 8. pilot: 10-20 complete successful trajectories, fresh-reset replay, timing, leakage, both arms, >1 scene
-passed pilot || { note pilot start
-  rm -rf /dev/shm/alphabot2_claims_pilot
+# 8. pilot under the FROZEN reset contract (hard world rebuild -> seeded task reset -> episode):
+#    10-15 accepted complete successes, fresh-reset replay, timing, leakage, both arms, >1 scene.
+#    Writes the clean collection dir; the earlier soft-reset pilot (runs/collect_v1) is a validation
+#    record only and never enters any dataset.
+CLEAN=${CLEAN_OUT:-$RUNS/collect_clean_v1}
+passed pilot_clean || { note pilot_clean start
+  rm -rf /dev/shm/alphabot2_claims_pilot_clean
   for w in 0 1; do
-    GPU=$GPU WORKER=$((90 + w)) NWORKERS=1 MAX_OK=10 CLAIM_DIR=/dev/shm/alphabot2_claims_pilot \
-      EPISODE_FILE=$RUNS/lists/pilot_candidates.txt OUT=$RUNS/collect_v1 $RUN $S/pilot.py > $LOGS/pilot_w$w.log 2>&1 &
+    GPU=$GPU WORKER=$((90 + w)) NWORKERS=1 MAX_OK=$((7 + w)) CLAIM_DIR=/dev/shm/alphabot2_claims_pilot_clean \
+      EPISODE_FILE=$RUNS/lists/pilot_candidates.txt OUT=$CLEAN $RUN $S/pilot.py > $LOGS/pilot_clean_w$w.log 2>&1 &
   done; wait
-  gate pilot $RUNS/collect_v1 $RUNS/lists/pilot_candidates.txt; }
+  GATE_NAME=pilot_clean gate pilot $CLEAN $RUNS/lists/pilot_candidates.txt; }
 
 # 9. long-running: continuous collection (seed-bank units, idle GPUs, crash recovery, atomic claims,
 #    resume) -> data QC gate -> conversion -> pi0.5 SFT -> normal-init e2e eval (gpu_scheduler.py)

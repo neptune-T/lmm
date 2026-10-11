@@ -42,8 +42,7 @@ def run_seq(seq):
 
 
 def max_div(t1, t2):
-    d = [SN.divergence(a, b) for a, b in zip(t1, t2)]
-    return {k: (max(x[k] for x in d) if k != "held_equal" else all(x[k] for x in d)) for k in d[0]} if d else None
+    return SN.max_divergence([SN.divergence(a, b) for a, b in zip(t1, t2)])
 
 
 with open(f"{OUT}/results.jsonl", "a") as fout:

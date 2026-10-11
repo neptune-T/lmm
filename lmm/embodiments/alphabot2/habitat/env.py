@@ -75,24 +75,20 @@ def reset_to(env, episode_id, replica: int = 0):
     # env.seed(); measured: the first reset after a scene switch sampled a different start than every
     # later reset of the same episode. Load the scene with a throw-away reset first, then seed + reset.
     #
-    # Clean physics world for EVERY reset (pilot replay diagnosis): rearrange_sim.reconfigure only rebuilds
-    # the world (hard reset) when the scene or object set changes; otherwise objects are re-posed in the
-    # running Bullet world (soft reset), so object dynamics depended on the previous episodes in the
-    # process (record after a scene switch vs replay right after it diverged; fresh-process replays
-    # matched). Forcing the throw-away reset to be a hard reset makes every reset the same path:
-    # hard rebuild -> seeded soft reset.
-    scene = env._alphabot2_raw[str(episode_id)].scene_id
-    force_clean = os.environ.get("ALPHABOT2_CLEAN_RESET", "1") == "1"
-    if force_clean or getattr(env, "_alphabot2_scene", None) != scene:
-        if force_clean:
-            env.sim.prev_scene_id = None
-            env.sim._prev_obj_names = None
-        env.seed(episode_seed(episode_id, replica))
-        try:
-            env.reset()
-        except AssertionError:                    # OVMM's reachability assert: the real reset decides
-            pass
-        env._alphabot2_scene = scene
+    # FROZEN RESET CONTRACT: hard world rebuild -> seeded task reset -> episode. Used by recording, replay,
+    # pilot, collection and eval alike; there is no soft-reset fast path. rearrange_sim.reconfigure only
+    # rebuilds the world when the scene or object set changes and otherwise re-poses objects in the running
+    # Bullet world, which made object dynamics depend on earlier episodes in the process (pilot replay
+    # rejections). A/B (8 units, one long-lived process): identical start poses; the history-dependent
+    # divergence disappears; what remains is the placed target's own rotation after release (tipping).
+    env.sim.prev_scene_id = None                  # force the hard rebuild ...
+    env.sim._prev_obj_names = None
+    env.seed(episode_seed(episode_id, replica))   # ... of a throw-away reset (also loads the navmesh, which
+    try:                                          # resets the pathfinder RNG after env.seed)
+        env.reset()
+    except AssertionError:                        # OVMM's reachability assert: the real reset decides
+        pass
+    env._alphabot2_scene = scene
     env.seed(episode_seed(episode_id, replica))
     return env.reset()
 

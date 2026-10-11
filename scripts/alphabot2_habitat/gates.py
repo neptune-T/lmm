@@ -35,6 +35,7 @@ def rows(d, pat="results*.jsonl"):
 
 
 def emit(name, ok, **kw):
+    name = os.environ.get("GATE_NAME", name)           # e.g. pilot_clean
     print("###GATE###" + json.dumps({"gate": name, "pass": bool(ok), **kw}, default=str), flush=True)
     sys.exit(0 if ok else 1)
 
@@ -145,9 +146,12 @@ if kind == "snapshot":
     # Tolerances from the measured envelope of the Isaac contact-rich audit
     # (docs/ALPHABOT2_SNAPSHOT_RESTORE_AUDIT.md, commit 2713b5f: restore vs uninterrupted <= 0.094 rad joints,
     # 0.65 mm base, 23.2 mm held object; branches from one snapshot identical; readback exact).
-    SNAP_TOL = {"readback": {"root_max_abs": 1e-6, "proprio_max_abs": 1e-6, "objects_max_abs": 1e-3},
-                "replay_vs_uninterrupted": {"root_max_abs": 5e-3, "proprio_max_abs": 0.1, "objects_max_abs": 0.025},
-                "branch_repeat": {"root_max_abs": 5e-3, "proprio_max_abs": 0.1, "objects_max_abs": 0.025}}
+    SNAP_TOL = {"readback": {"root_pos_m": 1e-6, "root_rot_deg": 1e-3, "proprio_max_abs": 1e-6,
+                             "objects_pos_max_m": 1e-3, "objects_rot_max_deg": 0.5},
+                "replay_vs_uninterrupted": {"root_pos_m": 5e-3, "root_rot_deg": 0.5, "proprio_max_abs": 0.1,
+                                            "objects_pos_max_m": 0.025, "objects_rot_max_deg": 5.0},
+                "branch_repeat": {"root_pos_m": 5e-3, "root_rot_deg": 0.5, "proprio_max_abs": 0.1,
+                                  "objects_pos_max_m": 0.025, "objects_rot_max_deg": 5.0}}
 
     def within(d, tol):
         return bool(d["held_equal"]) and all(d[k] <= v for k, v in tol.items())
@@ -174,7 +178,8 @@ if kind == "snapshot":
                     "replay_vs_uninterrupted": r["replay_vs_uninterrupted"], "replay_vs_replay": r["replay_vs_replay"]})
         if not all(checks.values()):
             bad.append((r["episode_id"], [k for k, v in checks.items() if not v]))
-    exact = all(max(p["replay_vs_replay"][k] for k in p["replay_vs_replay"] if k.endswith("_max_abs")) == 0.0 for p in per)
+    exact = all(all(p["replay_vs_replay"][k] == 0.0 for k in ("root_pos_m", "root_rot_deg", "proprio_max_abs",
+                                                              "objects_pos_max_m", "objects_rot_max_deg")) for p in per)
     emit("snapshot", len(per) >= 3 and not bad, n=len(per), problems=bad, tolerances=SNAP_TOL,
          verdict=("NOT_READY" if bad else "EXACT_BRANCHING" if exact else "USABLE_WITH_TOLERANCE"), episodes=per)
 
