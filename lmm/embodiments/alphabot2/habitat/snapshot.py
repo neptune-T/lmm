@@ -119,12 +119,18 @@ def state_vector(env) -> dict:
     return {"root": _m4(rob.sim_obj.transformation), "proprio": rob.proprio16(),
             "objects": np.concatenate([_m4(rom.get_object_by_id(o).transformation)[:3, :].ravel()
                                        for o in sim.scene_obj_ids]),
-            "held": [m._snapped_obj_id for m in sim.get_agent_data(0).grasp_mgrs]}
+            # held object as its index in the episode's object list (raw simulator ids are re-assigned by every
+            # hard world rebuild, so they differ between a recording and its fresh-reset replay)
+            "held": [None if m._snapped_obj_id is None else
+                     (list(sim.scene_obj_ids).index(m._snapped_obj_id) if m._snapped_obj_id in sim.scene_obj_ids else "other")
+                     for m in sim.get_agent_data(0).grasp_mgrs]}
 
 
 def _rot_deg(Ra, Rb) -> float:
-    c = (np.trace(np.asarray(Ra).T @ np.asarray(Rb)) - 1.0) / 2.0
-    return float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0))))
+    """Exact rotation angle between two rotation matrices, stable for small angles:
+    ||Ra - Rb||_F = 2*sqrt(2)*sin(theta/2). (arccos of the trace on float32 matrices reads ~0.05 deg of noise.)"""
+    d = np.linalg.norm(np.asarray(Ra, np.float64) - np.asarray(Rb, np.float64))
+    return float(np.degrees(2.0 * np.arcsin(min(1.0, d / (2.0 * np.sqrt(2.0))))))
 
 
 def divergence(a: dict, b: dict) -> dict:
