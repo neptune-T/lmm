@@ -45,6 +45,8 @@ rep = {}
 for unit in os.environ["UNITS"].split(","):
     e, r = HE.parse_unit(unit)
     HE.reset_to(env, e, r)
+    rob_ = HE.robot(env)
+    start_pose = [round(float(x), 5) for x in rob_.sim_obj.translation] + [round(float(rob_.base_rot), 5)]
     HE.fix_start(env)
     o0 = objs()
     hs = handles()
@@ -81,7 +83,8 @@ for unit in os.environ["UNITS"].split(","):
                     "ang_vel_at_reset": round(o0[i][3], 4),
                     "total_motion_in_original_m": round(float(np.linalg.norm(traj[-1][i][0] - traj[0][i][0])), 4)})
     bad = [p for p in per if p["max_trans_div_m"] > 0.025 or p["max_rot_div_deg"] > 5]
-    rep[unit] = {"steps": len(acts), "objects": len(per), "diverging": bad,
+    rep[unit] = {"steps": len(acts), "objects": len(per), "diverging": bad, "start_pose": start_pose,
+                 "clean_reset": os.environ.get("ALPHABOT2_CLEAN_RESET", "1"),
                  "unsettled_at_reset": [p["idx"] for p in per if p["lin_vel_at_reset"] > 1e-3 or p["ang_vel_at_reset"] > 1e-3]}
     print("REPLAYDIAG", unit, json.dumps(rep[unit]), flush=True)
 json.dump(rep, open(f"{out}/diag_replay_{os.getpid()}.json", "w"), indent=1)

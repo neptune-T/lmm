@@ -74,8 +74,19 @@ def reset_to(env, episode_id, replica: int = 0):
     # Loading a new scene recomputes the AlphaBot navmesh, which resets the pathfinder's RNG after
     # env.seed(); measured: the first reset after a scene switch sampled a different start than every
     # later reset of the same episode. Load the scene with a throw-away reset first, then seed + reset.
+    #
+    # Clean physics world for EVERY reset (pilot replay diagnosis): rearrange_sim.reconfigure only rebuilds
+    # the world (hard reset) when the scene or object set changes; otherwise objects are re-posed in the
+    # running Bullet world (soft reset), so object dynamics depended on the previous episodes in the
+    # process (record after a scene switch vs replay right after it diverged; fresh-process replays
+    # matched). Forcing the throw-away reset to be a hard reset makes every reset the same path:
+    # hard rebuild -> seeded soft reset.
     scene = env._alphabot2_raw[str(episode_id)].scene_id
-    if getattr(env, "_alphabot2_scene", None) != scene:
+    force_clean = os.environ.get("ALPHABOT2_CLEAN_RESET", "1") == "1"
+    if force_clean or getattr(env, "_alphabot2_scene", None) != scene:
+        if force_clean:
+            env.sim.prev_scene_id = None
+            env.sim._prev_obj_names = None
         env.seed(episode_seed(episode_id, replica))
         try:
             env.reset()
