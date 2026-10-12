@@ -76,7 +76,7 @@
   },
   "eval": {
     "split": "val",
-    "replicas": 1,
+    "replicas": 3,
     "workers": 8,
     "passes": 2,
     "port": 5600,
@@ -90,8 +90,10 @@
     ],
     "h_exec_preferred": 5,
     "sweep_units": 24,
-    "eval_max_units": 200,
-    "screen_workers": 4
+    "eval_max_units": 0,
+    "screen_workers": 4,
+    "calibration_source": "train_heldout",
+    "protocol_note": "OVMM val has only 10 AlphaBot-feasible episodes (1199 -> 133 geometry -> 73 reset-reachable -> 10 pick+place), so eval = every feasible val unit at 3 seed-bank replicas (as train), and the H_exec calibration subset comes from AlphaBot-feasible TRAIN-split units whose episodes are in no SFT manifest (independent of eval and of SFT data)"
   },
   "logs": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs",
   "data_gate_max_replay_reject_fraction": 0.2,

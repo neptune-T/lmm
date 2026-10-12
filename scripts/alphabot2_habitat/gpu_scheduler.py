@@ -47,6 +47,7 @@ st.setdefault("blocked", None)
 procs = {}
 ROUNDS = {r["name"]: r for r in CFG["rounds"]}
 ORDER = [r["name"] for r in CFG["rounds"]]
+FOREIGN_STICKY_S = 1800
 KIND_PRIO = {"convert": 0, "iface": 1, "sft": 2, "hsweep": 3, "eval": 4}
 
 
@@ -89,11 +90,17 @@ def gpus():
                           capture_output=True, text=True).stdout
     foreign = {u.strip() for p, u in (l.split(",") for l in apps.strip().splitlines() if l.strip())
                if not os.path.exists(f"/proc/{p.strip()}")}
+    # sticky: other tenants restart their processes (pid changes, short gaps), so a GPU on which a foreign
+    # process was seen within FOREIGN_STICKY_S still counts as theirs; we never co-locate there.
+    seen = st.setdefault("foreign_seen", {})
+    now = time.time()
+    for u in foreign:
+        seen[u] = now
     out = {}
     for l in q.strip().splitlines():
         i, uuid, used, tot, util = [x.strip() for x in l.split(",")]
         out[int(i)] = {"index": int(i), "used": int(used), "free": int(tot) - int(used), "util": int(util),
-                       "foreign": uuid in foreign}
+                       "foreign": uuid in foreign or now - seen.get(uuid, -1e18) < FOREIGN_STICKY_S}
     return out
 
 
@@ -443,9 +450,14 @@ def run_sft(j):
         event("sft_exit_restart", run=name, returncode=rc, attempt=j["attempts"])
 
 
+def val_tag():
+    E = CFG["eval"]
+    return E["split"] if int(E["replicas"]) == 1 else f"{E['split']}_r{E['replicas']}"
+
+
 def val_units():
     """The AlphaBot-feasible OVMM eval-split units, or None while the background screen runs."""
-    f = f"{R}/feasibility/units_{CFG['eval']['split']}.json"
+    f = f"{R}/feasibility/units_{val_tag()}.json"
     return f if os.path.exists(f) else None
 
 
@@ -454,8 +466,8 @@ def ensure_val_screen():
     as a round runs so it is ready when SFT finishes; co-located with collection on a GPU we may use
     (no foreign process), nothing is released for it. Gate -> units file, or a hard block."""
     E = CFG["eval"]
-    f = f"{R}/feasibility/units_{E['split']}.json"
-    out = f"{R}/emb_{E['split']}"
+    f = f"{R}/feasibility/units_{val_tag()}.json"
+    out = f"{R}/emb_{val_tag()}"
     if os.path.exists(f) or st["blocked"] or not any(x["status"] in ("pending", "running") for x in st["jobs"]):
         return
     if pgrep("val_screen.sh"):
@@ -478,42 +490,68 @@ def ensure_val_screen():
     if not ok:
         return
     os.makedirs(out, exist_ok=True)
-    sh(["bash", f"{S}/val_screen.sh", R, str(ok[0]), str(E.get("screen_workers", 4)), str(E["replicas"]), E["split"], LOGS],
+    sh(["bash", f"{S}/val_screen.sh", R, str(ok[0]), str(E.get("screen_workers", 4)), str(E["replicas"]), E["split"], LOGS, out],
        f"{LOGS}/val_screen.log")
     event("val_screen_start", gpu=ok[0], workers=E.get("screen_workers", 4), split=E["split"])
 
 
 def eval_split():
-    """Frozen once: calibration units (H_exec sweep) and the held-out eval units, disjoint by episode.
-    Order = crc32('hexec-calib:<episode>'); the first sweep_units episodes calibrate, the rest (capped at
-    eval_max_units) are the held-out normal-init eval set."""
+    """Frozen once: the held-out normal-init eval units (every AlphaBot-feasible unit of the OVMM eval split,
+    capped at eval_max_units if set) and an INDEPENDENT calibration subset for the H_exec sweep.
+    calibration_source "train_heldout": one unit per episode from the AlphaBot-feasible OVMM TRAIN-split
+    units whose episode is in no round manifest (never trained on; other split than eval), the first
+    sweep_units episodes in crc32('hexec-calib:<episode>') order. ("eval_split": carve it out of the eval
+    split instead, disjoint by episode -- only sensible when that split is large.)"""
     E = CFG["eval"]
-    f = f"{R}/eval_splits/{E['split']}_calib_eval.json"
+    f = f"{R}/eval_splits/{val_tag()}_calib_eval.json"
     if os.path.exists(f):
         return json.load(open(f))
     uf = val_units()
     if uf is None:
         return None
     units = json.load(open(uf))
-    eps = sorted({str(u["episode_id"]) for u in units}, key=lambda e: (zlib.crc32(f"hexec-calib:{e}".encode()), e))
-    cal_eps = set(eps[: E["sweep_units"]])
-    rest = eps[E["sweep_units"]:]
-    ev_eps = set(rest[: E["eval_max_units"]] if E.get("eval_max_units") else rest)
-    cal = [u["unit"] for u in units if str(u["episode_id"]) in cal_eps]
-    ev = [u["unit"] for u in units if str(u["episode_id"]) in ev_eps]
-    scenes = lambda us: len({u["scene"] for u in units if u["unit"] in set(us)})
-    rec = {"split": E["split"], "source": uf, "source_sha256": sha256(uf), "created": time.strftime("%F %T"),
-           "rule": "episodes ordered by crc32('hexec-calib:<episode>'); first sweep_units -> calibration; next "
-                   "eval_max_units -> held-out eval; disjoint by episode",
+    order = lambda e: (zlib.crc32(f"hexec-calib:{e}".encode()), e)
+    src = E.get("calibration_source", "eval_split")
+    if src == "train_heldout":
+        used = set()
+        for mf in sorted(os.listdir(f"{R}/manifests")) if os.path.isdir(f"{R}/manifests") else []:
+            if mf.endswith(".json"):
+                m = json.load(open(f"{R}/manifests/{mf}"))
+                used |= {u.split("#")[0] for u in m["train"] + m["val"]}
+        tu = json.load(open(f"{R}/feasibility/units_train.json"))
+        first = {}
+        for u in sorted(tu, key=lambda u: (u["episode_id"], u["replica"])):
+            if str(u["episode_id"]) not in used:
+                first.setdefault(str(u["episode_id"]), u)
+        cal_eps = sorted(first, key=order)[: E["sweep_units"]]
+        cal = [first[e]["unit"] for e in cal_eps]
+        cal_scenes = len({first[e]["scene"] for e in cal_eps})
+        ev_units = sorted(units, key=lambda u: (order(str(u["episode_id"])), u["replica"]))
+        ev = [u["unit"] for u in (ev_units[: E["eval_max_units"]] if E.get("eval_max_units") else ev_units)]
+        cal_src = f"{R}/feasibility/units_train.json minus every manifest episode ({len(used)} episodes excluded)"
+    else:
+        eps = sorted({str(u["episode_id"]) for u in units}, key=order)
+        cal_eps, rest = set(eps[: E["sweep_units"]]), eps[E["sweep_units"]:]
+        ev_eps = set(rest[: E["eval_max_units"]] if E.get("eval_max_units") else rest)
+        cal = [u["unit"] for u in units if str(u["episode_id"]) in cal_eps]
+        ev = [u["unit"] for u in units if str(u["episode_id"]) in ev_eps]
+        cal_scenes = len({u["scene"] for u in units if u["unit"] in set(cal)})
+        cal_src = uf
+    assert not ({u.split("#")[0] for u in cal} & {u.split("#")[0] for u in ev}), "calibration/eval overlap"
+    rec = {"split": E["split"], "replicas": E["replicas"], "source": uf, "source_sha256": sha256(uf), "created": time.strftime("%F %T"),
+           "calibration_source": src, "calibration_from": cal_src,
+           "rule": "calibration: first sweep_units episodes in crc32('hexec-calib:<episode>') order (one unit each); "
+                   "eval: every AlphaBot-feasible eval-split unit (normal OVMM init, seed-bank replicas), capped at eval_max_units",
            "calibration": cal, "eval": ev, "n_calibration": len(cal), "n_eval": len(ev),
-           "scenes_calibration": scenes(cal), "scenes_eval": scenes(ev), "n_feasible_units": len(units),
+           "eval_episodes": len({u.split("#")[0] for u in ev}),
+           "scenes_calibration": cal_scenes, "scenes_eval": len({u["scene"] for u in units if u["unit"] in set(ev)}),
+           "n_feasible_units": len(units),
            "calibration_sha256": hashlib.sha256("\n".join(cal).encode()).hexdigest(),
            "eval_sha256": hashlib.sha256("\n".join(ev).encode()).hexdigest()}
-    assert not ({u.split("#")[0] for u in cal} & {u.split("#")[0] for u in ev})
     os.makedirs(os.path.dirname(f), exist_ok=True)
     json.dump(rec, open(f + ".tmp", "w"), indent=1)
     os.replace(f + ".tmp", f)
-    event("eval_split_frozen", path=f, n_calibration=len(cal), n_eval=len(ev),
+    event("eval_split_frozen", path=f, n_calibration=len(cal), n_eval=len(ev), calibration_source=src,
           scenes_calibration=rec["scenes_calibration"], scenes_eval=rec["scenes_eval"])
     return rec
 
@@ -523,7 +561,7 @@ def h_exec():
     return int(st.get("h_exec_frozen") or CFG["eval"]["h_exec_preferred"])
 
 
-def eval_pass(name, sft_out, units, h, seed_offset, out):
+def eval_pass(name, sft_out, units, h, seed_offset, out, split=None):
     """One end-to-end eval pass (policy server + Habitat workers on one GPU). Returns the summary, None to
     retry later (no GPU / orphaned workers of a previous scheduler still running), or {"blocked": reason}.
     Workers resume per unit; units still missing after a re-run count as engineering errors."""
@@ -561,7 +599,7 @@ def eval_pass(name, sft_out, units, h, seed_offset, out):
             return {"blocked": "policy server failed to start", "log": open(f"{out}/server.log").read()[-1500:]}
     for attempt in range(2):
         ws = [sh(RUN + [f"{S}/eval_policy.py"], f"{out}/worker{w}.log",
-                 env={"EPISODES": ",".join(units), "SPLIT": E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
+                 env={"EPISODES": ",".join(units), "SPLIT": split or E["split"], "PORT": str(E["port"]), "OUT": out, "GPU": str(gpu),
                       "WORKER": str(w), "NWORKERS": str(E["workers"]), "EXEC_STEPS": str(h), "SEED_OFFSET": str(seed_offset)})
               for w in range(E["workers"])]
         for w in ws:
@@ -604,7 +642,8 @@ def run_hsweep(j):
     for h in E["h_exec_sweep"]:
         if str(h) in j["done_h"]:
             continue
-        s = eval_pass(name, sft_out, units, h, 0, f"{R}/eval/{name}/hsweep_h{h}")
+        s = eval_pass(name, sft_out, units, h, 0, f"{R}/eval/{name}/hsweep_h{h}",
+                      split="train" if sp.get("calibration_source") == "train_heldout" else None)
         if s is None:
             return
         if "blocked" in s:
@@ -628,7 +667,7 @@ def run_hsweep(j):
     st["h_exec_frozen"] = int(chosen)
     j["status"] = "done"
     rec = {"chosen_h_exec": chosen, "preferred": pref, "compared_on_stage": key, "tolerance": tol, "units": n,
-           "calibration_split": f"{R}/eval_splits/{E['split']}_calib_eval.json", "calibration_units": units,
+           "calibration_split": f"{R}/eval_splits/{val_tag()}_calib_eval.json", "calibration_units": units,
            "counts_by_h": counts, "h_pred": E["h_pred"], "note": "frozen for every later SFT/eval; not changed per round"}
     json.dump(rec, open(f"{R}/eval/{name}/hsweep_decision.json", "w"), indent=1)
     save()
@@ -706,7 +745,7 @@ def decide(j, name):
            "snapshot_accepted": st["rounds"][j["round"]].get("snapshot_accepted"),
            "sft": {k: sft_sum.get(k) for k in ("steps", "samples_seen", "effective_epochs", "train_episodes", "train_frames",
                                                "global_batch", "best_step", "best_val_loss")},
-           "eval_split": CFG["eval"]["split"], "eval_units_file": f"{R}/eval_splits/{CFG['eval']['split']}_calib_eval.json",
+           "eval_split": CFG["eval"]["split"], "eval_units_file": f"{R}/eval_splits/{val_tag()}_calib_eval.json",
            "val_funnel_full_to_feasible": st.get("val_funnel"),
            "passes": passes, "criterion": f">= {k_min} full successes in every noise-seed pass",
            "works": works, "first_collapsing_stage": drop,
@@ -784,11 +823,12 @@ def _write_run_info(rnd):
             e["summary"] = json.load(open(f"{out}/summary.json"))
         ri["sft"][v] = e
     E = CFG["eval"]
-    sp = f"{R}/eval_splits/{E['split']}_calib_eval.json"
+    sp = f"{R}/eval_splits/{val_tag()}_calib_eval.json"
     if os.path.exists(sp):
         d = json.load(open(sp))
-        ri["eval_split"] = {k: d[k] for k in ("split", "source", "source_sha256", "rule", "n_calibration", "n_eval",
-                                              "scenes_calibration", "scenes_eval", "calibration_sha256", "eval_sha256")}
+        ri["eval_split"] = {k: d.get(k) for k in ("split", "replicas", "source", "source_sha256", "rule", "calibration_source",
+                                                  "calibration_from", "n_calibration", "n_eval", "eval_episodes",
+                                                  "scenes_calibration", "scenes_eval", "calibration_sha256", "eval_sha256")}
         ri["eval_split"]["path"] = sp
     ri["h_exec"] = {"frozen": st.get("h_exec_frozen"), "h_pred": E["h_pred"], "sweep": E["h_exec_sweep"],
                     "preferred": E["h_exec_preferred"]}
