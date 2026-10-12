@@ -107,11 +107,17 @@ def main():
     ap.add_argument("--train-from-index", default=None)
     ap.add_argument("--legacy-commit", default="", help="last-resort collector commit for rows without code_commit")
     ap.add_argument("--supervisor-log", default=None, help="collection supervisor log (worker start times)")
+    ap.add_argument("--extra-start", action="append", default=[],
+                    help="'W1,W2@YYYY-mm-dd HH:MM:SS' start of workers not launched by the supervisor (e.g. the clean pilot)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
     rows = accepted(a.src)
     starts, hist = worker_starts(a.supervisor_log), head_history()
+    for x in a.extra_start:
+        ws, _, ts = x.partition("@")
+        for w in ws.split(","):
+            starts.setdefault(int(w), []).append(time.mktime(time.strptime(ts.strip(), "%Y-%m-%d %H:%M:%S")))
 
     def provenance(r, mt):
         if r.get("code_commit"):

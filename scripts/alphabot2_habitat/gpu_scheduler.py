@@ -305,6 +305,8 @@ def run_convert(j):
         cmd = ["python3", f"{S}/make_manifest.py", "--src", CFG["collect"]["out"], "--round", rnd, "--cutoff", str(cutoff),
                "--max-train", str(r["max_episodes"]), "--out", mp, "--legacy-commit", CFG["collect"].get("legacy_commit", ""),
                "--supervisor-log", f"{LOGS}/supervisor.log"]
+        for x in CFG["collect"].get("extra_worker_starts", []):
+            cmd += ["--extra-start", x]
         if j.get("adopted") and os.path.exists(idx):
             try:
                 if not json.load(open(idx)).get("manifest"):

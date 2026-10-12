@@ -11,7 +11,11 @@
     "poll_s": 120,
     "min_collect_gpus": 1,
     "legacy_commit": "",
-    "legacy_commit_note": "rows without code_commit are attributed by worker start time (supervisor log) and the deployed checkout's reflog; no fallback guess"
+    "legacy_commit_note": "rows without code_commit are attributed by worker start time (supervisor log) and the deployed checkout's reflog; no fallback guess",
+    "extra_worker_starts": [
+      "90,91@2026-10-11 20:43:50"
+    ],
+    "extra_worker_starts_note": "clean pilot workers 90/91 (pipeline.sh stage 8 'pilot_clean start', pipeline_status.jsonl); rows they wrote live in collect_clean_v1"
   },
   "data_check_every_s": 900,
   "rounds": [
