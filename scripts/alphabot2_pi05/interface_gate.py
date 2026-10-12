@@ -161,7 +161,10 @@ def main():
 
     torch.manual_seed(0)
     noise = torch.randn(1, cfg.chunk_size, cfg.max_action_dim, device=dev)
-    with torch.no_grad(), torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+    # masked == absent is a statement about the math (pad-masked image tokens get zero attention weight
+    # and do not shift positions), so it is checked in float32: under bf16 autocast the two sequence
+    # lengths alone change reduction order and the loss by ~3e-4 relative.
+    with torch.no_grad():
         loss3 = seeded_loss()
         imgs3, masks3 = policy._preprocess_images(pre(dict(batch)))
         from lerobot.configs.types import FeatureType, PolicyFeature
@@ -169,12 +172,15 @@ def main():
         imgs4, masks4 = policy._preprocess_images(pre(dict(batch)))
         loss4 = seeded_loss()
         del policy.config.input_features["observation.images.camera_front"]
+    with torch.no_grad(), torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+        loss_bf16 = seeded_loss()
         chunk = post(policy.predict_action_chunk(pre(dict(batch)), noise=noise)).float().cpu()
     ok["B_masked_equals_absent"] = (len(imgs4) == 4 and [bool(m[0]) for m in masks4] == [True, True, True, False]
                                     and abs(float(loss3) - float(loss4)) <= 1e-4 * max(1.0, abs(float(loss3))))
     ok["E_loss_finite"] = bool(torch.isfinite(loss3))
     ok["E_chunk_shape_finite"] = tuple(chunk.shape) == (1, cfg.chunk_size, 18) and bool(torch.isfinite(chunk).all())
-    rep["E"] = {"loss_absent": float(loss3), "loss_masked": float(loss4), "masks_with_front": [bool(m[0]) for m in masks4],
+    rep["E"] = {"loss_absent_fp32": float(loss3), "loss_masked_fp32": float(loss4), "loss_absent_bf16_autocast": float(loss_bf16),
+                "masks_with_front": [bool(m[0]) for m in masks4],
                 "n_images_absent": len(imgs3), "chunk_shape": list(chunk.shape),
                 "chunk_first_step": chunk[0, 0].tolist(), "label_first_step": batch["action"][0, 0].tolist()}
 
@@ -206,27 +212,35 @@ def main():
             clamp_ok &= bool(np.abs(it["action"].numpy()[pad] - last_action).max() < 1e-5)
     ok["F_tail_pad_pattern"] = pad_ok
     ok["F_tail_pad_clamped_to_last_frame"] = clamp_ok
-    # masked loss ignores padded targets; the unmasked loss does not
+    # Padded targets get weight exactly 0 in the training loss. (Corrupting padded ACTIONS is not a valid
+    # probe: in flow matching they are also the model's noised inputs x_t and reach valid steps through
+    # the chunk's bidirectional attention. Padded inputs are clamped copies of the last real action,
+    # checked above.) So: one forward's per-step losses; corrupt the padded steps' losses; the masked
+    # reduction must not move, must equal the mean over valid steps, and the unmasked reduction must move.
     it = ds[start + max(0, T - 10)]
     raw = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in it.items() if k.startswith(("observation", "action", "task"))}
-    corrupt = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in raw.items()}
     pm = raw["action_is_pad"][0].bool()
-    corrupt["action"][0, pm] = 100.0
-
-    def seeded(b, use_mask):
-        x = pre(dict(b))
+    with torch.no_grad():
+        x = pre(dict(raw))
         torch.manual_seed(77)
         torch.cuda.manual_seed_all(77)
-        return float(ovmm_model.masked_loss(policy, x, b["action_is_pad"] if use_mask else None)[0])
-
-    with torch.no_grad(), torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
-        lm, lm_c = seeded(raw, True), seeded(corrupt, True)
-        lu, lu_c = seeded(raw, False), seeded(corrupt, False)
-    ok["F_masked_loss_ignores_padded_targets"] = bool(pm.any()) and abs(lm - lm_c) <= 1e-5 * max(1.0, abs(lm)) and abs(lu - lu_c) > 1e-3
+        losses = ovmm_model.flow_losses(policy, x).float()
+        torch.manual_seed(77)
+        torch.cuda.manual_seed_all(77)
+        lm_api = float(ovmm_model.masked_loss(policy, x, raw["action_is_pad"])[0])
+    bad = losses.clone()
+    bad[0, pm.to(bad.device)] = 1e6
+    lm = float(ovmm_model.reduce_masked(losses, raw["action_is_pad"])[0])
+    lm_c = float(ovmm_model.reduce_masked(bad, raw["action_is_pad"])[0])
+    lu, lu_c = float(ovmm_model.reduce_masked(losses)[0]), float(ovmm_model.reduce_masked(bad)[0])
+    lm_manual = float(losses[0, ~pm.to(losses.device)].mean())
+    ok["F_masked_loss_ignores_padded_targets"] = (bool(pm.any()) and lm == lm_c and abs(lm - lm_manual) <= 1e-6 * max(1.0, abs(lm))
+                                                  and abs(lu - lu_c) > 1.0 and abs(lm_api - lm) <= 1e-4 * max(1.0, abs(lm)))
     exp = window_exposure(epi, stg, sid, cfg.chunk_size)
     ok["F_settle_exposure_bounded"] = exp["max_settle_targets_per_window"] <= keep
-    rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "masked_loss": lm, "masked_loss_corrupted_pads": lm_c,
-                "unmasked_loss": lu, "unmasked_loss_corrupted_pads": lu_c, "window_exposure": exp,
+    rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "masked_loss": lm, "masked_loss_corrupted_pad_losses": lm_c,
+                "masked_loss_manual_valid_mean": lm_manual, "masked_loss_api_same_seed": lm_api,
+                "unmasked_loss": lu, "unmasked_loss_corrupted_pad_losses": lu_c, "window_exposure": exp,
                 "settle_frames_dropped_total": int(sum(e.get("settle_frames_dropped", 0) for e in index["episodes"]))}
 
     # ---------------- one-frame visualization

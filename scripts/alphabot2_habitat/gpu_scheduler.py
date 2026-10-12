@@ -153,15 +153,26 @@ def running_supervisor():
 
 def ensure_collection():
     p = procs.get("collect")
-    if p is None and running_supervisor():
+    if p is None and running_supervisor():                          # (None also after collection completed)
         procs["collect"] = Adopted(running_supervisor())
         event("collection_supervisor_adopted", pid=procs["collect"].pid)
         return
     if p is not None and p.poll() is None:
         return
+    C = CFG["collect"]
+    cs = collect_status()
+    if cs.get("todo") == 0 and cs.get("processed") and os.path.getmtime(C["units_file"]) < os.path.getmtime(
+            f"{C['out']}/supervisor_status.json"):
+        if not st.get("collection_complete"):                      # seed bank exhausted: nothing to restart for
+            st["collection_complete"] = {k: cs.get(k) for k in ("time", "processed", "accepted", "success",
+                                                                "success_but_replay_mismatch")}
+            save()
+            event("collection_complete", **st["collection_complete"])
+        procs["collect"] = None
+        return
+    st.pop("collection_complete", None)
     if p is not None:
         event("collection_supervisor_restart", returncode=p.returncode)
-    C = CFG["collect"]
     procs["collect"] = sh(["python3", f"{S}/collect_supervisor.py"], f"{LOGS}/supervisor.log",
                           env={"OUT": C["out"], "EPISODE_FILE": C["units_file"], "START_GPUS": ",".join(map(str, C["start_gpus"])),
                                "PER_GPU": str(C["per_gpu"]), "POLL_S": str(C["poll_s"]), "CLAIM_DIR": "/dev/shm/alphabot2_claims",
@@ -323,6 +334,14 @@ def run_convert(j):
         out = ds_dir(rnd, split)
         idx = f"{out}/ovmm_episode_index.json"
         if os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]:
+            if not os.path.exists(f"{out}/meta/exact_stats.json"):  # adopted pre-fix dataset: exact stats
+                rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/exact_stats.py", out],
+                                    stdout=open(f"{LOGS}/exact_stats_{rnd}.log", "a"), stderr=subprocess.STDOUT).returncode
+                if rc != 0:
+                    j["status"] = "blocked"
+                    block("CONVERT", f"exact_stats.py {rnd} {split} exited {rc}")
+                    return
+                event("exact_stats_applied", round=rnd, split=split)
             continue                                               # already holds exactly the manifest's IDs
         j["status"] = "running"
         save()
@@ -330,7 +349,8 @@ def run_convert(j):
                "--manifest", mp, "--split", split, "--out", out]
         rc = subprocess.run(cmd, env={**os.environ, **env_pi()}, stdout=open(f"{LOGS}/convert_{rnd}_{split}.log", "a"),
                             stderr=subprocess.STDOUT).returncode
-        ok = rc == 0 and os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]
+        ok = (rc == 0 and os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]
+              and os.path.exists(f"{out}/meta/exact_stats.json"))
         if not ok:
             j["status"] = "blocked"
             block("CONVERT", f"ovmm_to_lerobot.py {rnd} --split {split} exited {rc} or does not match the manifest")

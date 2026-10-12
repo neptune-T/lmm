@@ -59,21 +59,20 @@ from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TO
 import torch  # noqa: E402
 
 
-def masked_loss(policy, batch, action_is_pad=None):
-    """PI05Policy.forward's flow-matching loss with chunk steps beyond the episode end EXCLUDED.
-
-    lerobot 0.6.1 clamps chunk indices past the episode end to the last frame and flags them
-    action_is_pad, but PI05Policy.forward ignores the flag, so padded copies of the final (post-release)
-    action would be trained as real targets. Same preprocessing, noise/time sampling and model call as
-    PI05Policy.forward; only the reduction differs. action_is_pad: (B, chunk) bool from the RAW batch."""
+def flow_losses(policy, batch):
+    """Per-(chunk step, action dim) flow-matching losses, exactly as PI05Policy.forward computes them."""
     images, img_masks = policy._preprocess_images(batch)
     tokens, masks = batch[OBS_LANGUAGE_TOKENS], batch[OBS_LANGUAGE_ATTENTION_MASK]
     actions = policy.prepare_action(batch)
     noise = policy.model.sample_noise(actions.shape, actions.device)
     time = policy.model.sample_time(actions.shape[0], actions.device)
     losses = policy.model.forward(images, img_masks, tokens, masks, actions, noise, time)
-    d = policy.config.output_features["action"].shape[0]
-    losses = losses[:, :, :d]
+    return losses[:, :, :policy.config.output_features["action"].shape[0]]
+
+
+def reduce_masked(losses, action_is_pad=None):
+    """Mean over valid (non-padded) chunk steps and all action dims; padded steps get weight exactly 0."""
+    d = losses.shape[-1]
     if action_is_pad is None:
         valid = torch.ones(losses.shape[:2], device=losses.device)
     else:
@@ -84,6 +83,16 @@ def masked_loss(policy, batch, action_is_pad=None):
     per_dim = (losses * w).sum(dim=(0, 1)) / n
     return loss, {"loss_per_dim": per_dim.detach().float().cpu().numpy().tolist(), "loss": float(loss),
                   "valid_target_fraction": float(valid.mean())}
+
+
+def masked_loss(policy, batch, action_is_pad=None):
+    """PI05Policy.forward's flow-matching loss with chunk steps beyond the episode end EXCLUDED.
+
+    lerobot 0.6.1 clamps chunk indices past the episode end to the last frame and flags them
+    action_is_pad, but PI05Policy.forward ignores the flag, so padded copies of the final (post-release)
+    action would be trained as real targets. Same preprocessing, noise/time sampling and model call as
+    PI05Policy.forward; only the reduction differs. action_is_pad: (B, chunk) bool from the RAW batch."""
+    return reduce_masked(flow_losses(policy, batch), action_is_pad)
 
 
 class MaskedLoss(torch.nn.Module):

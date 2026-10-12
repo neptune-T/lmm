@@ -27,6 +27,7 @@ import numpy as np
 
 REPO = os.environ.get("LMM_REPO", str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lmm.embodiments.alphabot2 import ovmm_policy_io as IO  # noqa: E402
 
 CAM_MAP = IO.CAMERA_MAP                     # the one interface (crossed wrists; camera_front absent)
@@ -133,12 +134,15 @@ def main():
         if len(used) % 50 == 0:
             print(f"{len(used)}/{len(rows)} episodes, {time.time() - t0:.0f}s", flush=True)
     ds.finalize()
+    import exact_stats                                                  # lerobot's aggregated quantiles are not
+    stats_fix = exact_stats.apply(args.out)                             # the data quantiles: exact, all frames
     np.savez(Path(args.out) / "frame_meta.npz", **{k: np.asarray(v) for k, v in fm.items()},
              stage_names=np.asarray(sorted(stage_names, key=stage_names.get)),
              scene_names=np.asarray(sorted(scenes, key=scenes.get)))
     Path(args.out, "policy_io.json").write_text(json.dumps(IO.describe(), indent=1))
     out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "keep_settle": args.keep_settle,
            "episodes": used, "policy_io": IO.describe(),
+           "exact_stats": True, "lerobot_aggregate_quantile_error": stats_fix,
            "manifest": args.manifest, "dataset_version": manifest.get("dataset_version") if manifest else None,
            "manifest_sha256": hashlib.sha256(Path(args.manifest).read_bytes()).hexdigest() if args.manifest else None,
            "frames": int(sum(u["frames"] for u in used)), "camera_map": CAM_MAP, "video": not args.png,
