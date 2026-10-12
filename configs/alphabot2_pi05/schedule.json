@@ -10,8 +10,8 @@
     "per_gpu": 4,
     "poll_s": 120,
     "min_collect_gpus": 1,
-    "legacy_commit": "7e62b2e",
-    "legacy_commit_note": "collector commit of rows written before rows carried code_commit (workers started at 7e62b2e)"
+    "legacy_commit": "",
+    "legacy_commit_note": "rows without code_commit are attributed by worker start time (supervisor log) and the deployed checkout's reflog; no fallback guess"
   },
   "data_check_every_s": 900,
   "rounds": [

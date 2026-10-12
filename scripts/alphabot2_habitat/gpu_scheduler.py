@@ -292,7 +292,8 @@ def run_convert(j):
         j["snapshot_cutoff"] = cutoff
         idx = f"{ds_dir(rnd, 'train')}/ovmm_episode_index.json"
         cmd = ["python3", f"{S}/make_manifest.py", "--src", CFG["collect"]["out"], "--round", rnd, "--cutoff", str(cutoff),
-               "--max-train", str(r["max_episodes"]), "--out", mp, "--legacy-commit", CFG["collect"].get("legacy_commit", "")]
+               "--max-train", str(r["max_episodes"]), "--out", mp, "--legacy-commit", CFG["collect"].get("legacy_commit", ""),
+               "--supervisor-log", f"{LOGS}/supervisor.log"]
         if j.get("adopted") and os.path.exists(idx):
             try:
                 if not json.load(open(idx)).get("manifest"):
