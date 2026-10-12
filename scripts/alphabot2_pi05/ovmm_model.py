@@ -54,20 +54,72 @@ def build(cfg, weights, init_ckpt, stats, device="cuda"):
     return policy, pre, post
 
 
-# --------------------------------------------------------------------------- padded-target-masked SFT loss
+# --------------------------------------------------------------------------- padding contract of the SFT loss
+# Chunk steps past the episode end (action_is_pad; lerobot clamps them to the last real frame) must give
+# (1) no target supervision and (2) no information to the valid steps. lerobot 0.6.1's PI05 forward
+# ignores action_is_pad, and its action tokens attend to each other bidirectionally, so padded noisy
+# actions x_t = t*noise + (1-t)*a_last would reach valid steps through attention (and carry the episode's
+# tail action). flow_losses is PI05Pytorch.forward (lerobot 0.6.1, mirrored line for line) with ONE change:
+# the suffix pad mask is ~action_is_pad, so make_att_2d_masks removes padded keys for every query (the
+# additive -2.38e38 makes their softmax weight exactly 0); padding is always a chunk tail, so the
+# position ids of valid steps are unchanged. reduce_masked gives padded steps loss weight exactly 0.
+# The interface gate verifies: valid outputs invariant to padded inputs, zero padded loss weight, and
+# bit-equality with lerobot's forward when nothing is padded (the mirror is pinned to 0.6.1).
+import lerobot  # noqa: E402
+from lerobot.policies.common.vla_utils import make_att_2d_masks, prepare_attention_masks_4d  # noqa: E402
 from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS  # noqa: E402
 import torch  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+
+LEROBOT_MIRRORED = "0.6.1"
+assert lerobot.__version__ == LEROBOT_MIRRORED, f"flow_losses mirrors lerobot {LEROBOT_MIRRORED}, found {lerobot.__version__}"
 
 
-def flow_losses(policy, batch):
-    """Per-(chunk step, action dim) flow-matching losses, exactly as PI05Policy.forward computes them."""
+def suffix_forward(model, images, img_masks, tokens, masks, actions, noise, time, action_valid=None):
+    """PI05Pytorch.forward (lerobot 0.6.1) returning (per-element losses, v_t); action_valid (B, chunk)
+    bool masks padded action tokens out of attention. action_valid=None is lerobot's forward exactly."""
+    time_expanded = time[:, None, None]
+    x_t = time_expanded * noise + (1 - time_expanded) * actions
+    u_t = noise - actions
+    prefix_embs, prefix_pad_masks, prefix_att_masks = model.embed_prefix(images, img_masks, tokens, masks)
+    suffix_embs, suffix_pad_masks, suffix_att_masks, adarms_cond = model.embed_suffix(x_t, time)
+    if action_valid is not None:
+        suffix_pad_masks = suffix_pad_masks & action_valid.to(suffix_pad_masks.device).bool()
+    if model.paligemma_with_expert.paligemma.model.language_model.layers[0].self_attn.q_proj.weight.dtype == torch.bfloat16:
+        suffix_embs = suffix_embs.to(dtype=torch.bfloat16)
+        prefix_embs = prefix_embs.to(dtype=torch.bfloat16)
+    pad_masks = torch.cat([prefix_pad_masks, suffix_pad_masks], dim=1)
+    att_masks = torch.cat([prefix_att_masks, suffix_att_masks], dim=1)
+    att_2d_masks = make_att_2d_masks(pad_masks, att_masks)
+    position_ids = torch.cumsum(pad_masks, dim=1) - 1
+    att_2d_masks_4d = prepare_attention_masks_4d(att_2d_masks)
+
+    def forward_func(prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond):
+        (_, suffix_out), _ = model.paligemma_with_expert.forward(
+            attention_mask=att_2d_masks_4d, position_ids=position_ids, past_key_values=None,
+            inputs_embeds=[prefix_embs, suffix_embs], use_cache=False, adarms_cond=[None, adarms_cond])
+        return suffix_out
+
+    suffix_out = model._apply_checkpoint(forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond)
+    suffix_out = suffix_out[:, -model.config.chunk_size:].to(dtype=torch.float32)
+    v_t = model._apply_checkpoint(lambda o: model.action_out_proj(o), suffix_out)
+    return F.mse_loss(u_t, v_t, reduction="none"), v_t
+
+
+def flow_losses(policy, batch, action_is_pad=None, noise=None, time=None, return_v=False):
+    """Per-(chunk step, action dim) flow-matching losses with padded action tokens masked out of attention.
+    noise/time default to the policy's own samplers (as PI05Policy.forward draws them)."""
     images, img_masks = policy._preprocess_images(batch)
     tokens, masks = batch[OBS_LANGUAGE_TOKENS], batch[OBS_LANGUAGE_ATTENTION_MASK]
     actions = policy.prepare_action(batch)
-    noise = policy.model.sample_noise(actions.shape, actions.device)
-    time = policy.model.sample_time(actions.shape[0], actions.device)
-    losses = policy.model.forward(images, img_masks, tokens, masks, actions, noise, time)
-    return losses[:, :, :policy.config.output_features["action"].shape[0]]
+    if noise is None:
+        noise = policy.model.sample_noise(actions.shape, actions.device)
+    if time is None:
+        time = policy.model.sample_time(actions.shape[0], actions.device)
+    valid = None if action_is_pad is None else ~action_is_pad.to(actions.device).bool()
+    losses, v_t = suffix_forward(policy.model, images, img_masks, tokens, masks, actions, noise, time, valid)
+    d = policy.config.output_features["action"].shape[0]
+    return (losses[:, :, :d], v_t[:, :, :d]) if return_v else losses[:, :, :d]
 
 
 def reduce_masked(losses, action_is_pad=None):
@@ -92,7 +144,7 @@ def masked_loss(policy, batch, action_is_pad=None):
     action_is_pad, but PI05Policy.forward ignores the flag, so padded copies of the final (post-release)
     action would be trained as real targets. Same preprocessing, noise/time sampling and model call as
     PI05Policy.forward; only the reduction differs. action_is_pad: (B, chunk) bool from the RAW batch."""
-    return reduce_masked(flow_losses(policy, batch), action_is_pad)
+    return reduce_masked(flow_losses(policy, batch, action_is_pad), action_is_pad)
 
 
 class MaskedLoss(torch.nn.Module):

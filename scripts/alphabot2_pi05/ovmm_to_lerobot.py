@@ -135,7 +135,8 @@ def main():
             print(f"{len(used)}/{len(rows)} episodes, {time.time() - t0:.0f}s", flush=True)
     ds.finalize()
     import exact_stats                                                  # lerobot's aggregated quantiles are not
-    stats_fix = exact_stats.apply(args.out)                             # the data quantiles: exact, all frames
+    stats_fix = exact_stats.apply(args.out, args.manifest, args.split,  # the data quantiles: exact, all frames
+                                  [str(u["unit"]) for u in used])
     np.savez(Path(args.out) / "frame_meta.npz", **{k: np.asarray(v) for k, v in fm.items()},
              stage_names=np.asarray(sorted(stage_names, key=stage_names.get)),
              scene_names=np.asarray(sorted(scenes, key=scenes.get)))

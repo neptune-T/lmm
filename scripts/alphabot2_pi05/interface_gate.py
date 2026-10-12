@@ -7,18 +7,20 @@ Runs in the pi0.5 env on the round's converted TRAIN dataset and the real collec
                arm joints (left and right slots; a left/right or slot permutation would fail this).
   B  images    dataset image keys == the fixed camera map; pixels equal their source camera (and are clearly
                farther from the crossed alternative); model image order == pretrained relative order
-               (camera_left, camera_right, camera_top); camera_front masked == absent (identical loss with
-               fixed noise/time); one-frame visualization PNG.
+               (camera_left, camera_right, camera_top); camera_front masked == absent (identical fp32 loss
+               with fixed noise/time); one-frame visualization PNG.
   C  action    dataset names == CartesianMobileAction18 labels; quantile stats (q01/q99) present, finite,
-               non-degenerate for all 18 dims and equal to quantiles recomputed from the data (incl. base v,
-               omega, which have no checkpoint stats); normalize -> unnormalize round trip.
+               non-degenerate for all 18 dims and equal to the exact data quantiles (exact_stats.py; incl.
+               base v, omega, which have no checkpoint stats); normalize -> unnormalize round trip.
   D  horizon   chunk_size 50 (prediction) vs explicit 1 <= H_exec <= 50 (execution); recorded.
   E  smoke     one finite training loss; predict_action_chunk -> (1, 50, 18) finite.
   F  horizon   post-release settle truncated at conversion (<= keep_settle frames, at the tail) i.e. before
-     boundary  any 50-step chunk exists; tail chunks: action_is_pad pattern exact and padded targets are
-               clamped copies of the last frame; the SFT loss (ovmm_model.masked_loss) ignores padded
-               targets (corrupting them leaves it unchanged; the unmasked loss changes); no training window
-               has more than keep_settle real settle targets.
+     boundary  any 50-step chunk exists; tail chunks: action_is_pad pattern exact, padded steps clamped to
+               the last frame; PADDING CONTRACT of the SFT loss (ovmm_model): padded steps get no target
+               supervision AND give no information to valid steps (padded action tokens masked out of
+               attention: valid predictions invariant to padded inputs, while lerobot's unmasked forward
+               leaks), masked forward == lerobot's forward when nothing is padded; no training window has
+               more than keep_settle real settle targets.
 Writes OUT/interface_gate.json and OUT/interface_frame.png; prints ###GATE###; exit 1 on any failure.
 
     python interface_gate.py --config ROUND_SFT_YAML --collect COLLECT_DIR --h-exec 5 --out DIR
@@ -37,6 +39,7 @@ from lmm.embodiments.alphabot2.ovmm_chain_check import lowering_chain  # noqa: E
 from lmm.embodiments.alphabot2.ovmm_sft_windows import expected_pad, window_exposure  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata  # noqa: E402
+from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS  # noqa: E402
 
 
 
@@ -212,35 +215,76 @@ def main():
             clamp_ok &= bool(np.abs(it["action"].numpy()[pad] - last_action).max() < 1e-5)
     ok["F_tail_pad_pattern"] = pad_ok
     ok["F_tail_pad_clamped_to_last_frame"] = clamp_ok
-    # Padded targets get weight exactly 0 in the training loss. (Corrupting padded ACTIONS is not a valid
-    # probe: in flow matching they are also the model's noised inputs x_t and reach valid steps through
-    # the chunk's bidirectional attention. Padded inputs are clamped copies of the last real action,
-    # checked above.) So: one forward's per-step losses; corrupt the padded steps' losses; the masked
-    # reduction must not move, must equal the mean over valid steps, and the unmasked reduction must move.
+    # Padding contract: chunk steps past the episode end give (1) no target supervision and (2) no
+    # information to valid steps. (2) is attention: lerobot's PI05 action tokens attend to each other
+    # bidirectionally, so padded noisy actions (built from the clamped tail action) would reach valid
+    # steps; ovmm_model.flow_losses masks padded keys. Probes on a real tail frame, fp32, fixed noise/time:
+    #   invariance  corrupt the padded actions -> valid-step predictions v_t unchanged (masked forward)
+    #   sensitivity the same corruption DOES move valid v_t under lerobot's unmasked forward (the probe
+    #               detects leakage; this is the leak the mask removes)
+    #   reduction   corrupt the padded steps' losses -> masked reduction bit-identical, = valid-step mean
+    #   equivalence nothing padded -> masked forward bit-identical to lerobot's PI05Pytorch.forward
+    #   training    ovmm_model.masked_loss (the SFT loss) == reduce_masked(flow_losses(masked)) same seed
     it = ds[start + max(0, T - 10)]
     raw = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in it.items() if k.startswith(("observation", "action", "task"))}
     pm = raw["action_is_pad"][0].bool()
+    corrupt = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in raw.items()}
+    corrupt["action"][0, pm] = 100.0
+    xr, xc = pre(dict(raw)), pre(dict(corrupt))
+    pad = raw["action_is_pad"].to(dev)
+    vm = ~pm.to(dev)
+    torch.manual_seed(77)
+    nz = torch.randn(policy.prepare_action(xr).shape, device=dev)
+    inv, sens = [], []
     with torch.no_grad():
-        x = pre(dict(raw))
-        torch.manual_seed(77)
-        torch.cuda.manual_seed_all(77)
-        losses = ovmm_model.flow_losses(policy, x).float()
-        torch.manual_seed(77)
-        torch.cuda.manual_seed_all(77)
-        lm_api = float(ovmm_model.masked_loss(policy, x, raw["action_is_pad"])[0])
+        for tv in (0.1, 0.5, 0.9):
+            tm = torch.full((1,), tv, device=dev)
+            _, v_r = ovmm_model.flow_losses(policy, xr, pad, noise=nz, time=tm, return_v=True)
+            _, v_c = ovmm_model.flow_losses(policy, xc, pad, noise=nz, time=tm, return_v=True)
+            _, u_r = ovmm_model.flow_losses(policy, xr, None, noise=nz, time=tm, return_v=True)
+            _, u_c = ovmm_model.flow_losses(policy, xc, None, noise=nz, time=tm, return_v=True)
+            inv.append(float((v_r[0, vm] - v_c[0, vm]).abs().max()))
+            sens.append(float((u_r[0, vm] - u_c[0, vm]).abs().max()))
+        tm = torch.full((1,), 0.5, device=dev)
+        losses = ovmm_model.flow_losses(policy, xr, pad, noise=nz, time=tm).float()
+        torch.manual_seed(78)
+        torch.cuda.manual_seed_all(78)
+        lm_api = float(ovmm_model.masked_loss(policy, xr, pad)[0])
+        torch.manual_seed(78)
+        torch.cuda.manual_seed_all(78)
+        lm_ref = float(ovmm_model.reduce_masked(ovmm_model.flow_losses(policy, xr, pad), pad)[0])
+        # equivalence on an unpadded frame (mid-episode item from E)
+        xb = pre(dict(batch))
+        nopad = batch.get("action_is_pad", torch.zeros(1, cfg.chunk_size, dtype=torch.bool))
+        images, img_masks = policy._preprocess_images(xb)
+        acts = policy.prepare_action(xb)
+        nz2 = torch.randn(acts.shape, device=dev)
+        lerobot_l = policy.model.forward(images, img_masks, xb[OBS_LANGUAGE_TOKENS], xb[OBS_LANGUAGE_ATTENTION_MASK],
+                                         acts, nz2, tm)[:, :, :18]
+        ours_l = ovmm_model.flow_losses(policy, xb, nopad.to(dev), noise=nz2, time=tm)
     bad = losses.clone()
     bad[0, pm.to(bad.device)] = 1e6
-    lm = float(ovmm_model.reduce_masked(losses, raw["action_is_pad"])[0])
-    lm_c = float(ovmm_model.reduce_masked(bad, raw["action_is_pad"])[0])
+    lm = float(ovmm_model.reduce_masked(losses, pad)[0])
+    lm_c = float(ovmm_model.reduce_masked(bad, pad)[0])
     lu, lu_c = float(ovmm_model.reduce_masked(losses)[0]), float(ovmm_model.reduce_masked(bad)[0])
-    lm_manual = float(losses[0, ~pm.to(losses.device)].mean())
-    ok["F_masked_loss_ignores_padded_targets"] = (bool(pm.any()) and lm == lm_c and abs(lm - lm_manual) <= 1e-6 * max(1.0, abs(lm))
-                                                  and abs(lu - lu_c) > 1.0 and abs(lm_api - lm) <= 1e-4 * max(1.0, abs(lm)))
+    lm_manual = float(losses[0, vm.to(losses.device)].mean())
+    ok["F_pad_no_target_supervision"] = (bool(pm.any()) and lm == lm_c and abs(lm - lm_manual) <= 1e-6 * max(1.0, abs(lm))
+                                         and abs(lu - lu_c) > 1.0)
+    ok["F_pad_no_information_to_valid_steps"] = bool(pm.any()) and max(inv) <= 1e-6
+    ok["F_pad_probe_detects_unmasked_leak"] = min(sens) > 1e-4
+    ok["F_masked_forward_equals_lerobot_without_padding"] = (not bool(nopad.any())) and bool(torch.equal(lerobot_l, ours_l))
+    ok["F_sft_loss_uses_padding_contract"] = abs(lm_api - lm_ref) <= 1e-6 * max(1.0, abs(lm_ref))
     exp = window_exposure(epi, stg, sid, cfg.chunk_size)
     ok["F_settle_exposure_bounded"] = exp["max_settle_targets_per_window"] <= keep
-    rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "masked_loss": lm, "masked_loss_corrupted_pad_losses": lm_c,
-                "masked_loss_manual_valid_mean": lm_manual, "masked_loss_api_same_seed": lm_api,
-                "unmasked_loss": lu, "unmasked_loss_corrupted_pad_losses": lu_c, "window_exposure": exp,
+    rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "probe_times": [0.1, 0.5, 0.9],
+                "valid_v_max_abs_change_masked": inv, "valid_v_max_abs_change_unmasked_lerobot": sens,
+                "masked_loss": lm, "masked_loss_corrupted_pad_losses": lm_c, "masked_loss_manual_valid_mean": lm_manual,
+                "unmasked_loss": lu, "unmasked_loss_corrupted_pad_losses": lu_c,
+                "sft_masked_loss_same_seed": lm_api, "reference_same_seed": lm_ref,
+                "lerobot_vs_masked_no_padding_max_abs": float((lerobot_l - ours_l).abs().max()),
+                "residual_note": "valid steps cannot attend to padded tokens; the only boundary signal left is the attention "
+                                 "support size (how many real steps remain, <= 50), which carries no tail action values",
+                "window_exposure": exp,
                 "settle_frames_dropped_total": int(sum(e.get("settle_frames_dropped", 0) for e in index["episodes"]))}
 
     # ---------------- one-frame visualization

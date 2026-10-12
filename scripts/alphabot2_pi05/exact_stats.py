@@ -9,9 +9,12 @@ frames and written into meta/stats.json; lerobot's aggregate is kept in meta/sta
 and meta/exact_stats.json records that (and how) the replacement was done.
 Image statistics are untouched (VISUAL features use identity normalization). Idempotent.
 
-    python exact_stats.py DATASET_ROOT [DATASET_ROOT ...]
+    python exact_stats.py DATASET_ROOT [--manifest M.json]
+
+With --manifest the stats are frozen to that dataset version: meta/exact_stats.json records the manifest
+sha256, dataset_version, and that the dataset's episodes are exactly the manifest's split (else exit 1).
 """
-import glob, json, shutil, sys
+import argparse, glob, hashlib, json, shutil
 from pathlib import Path
 
 import numpy as np
@@ -35,8 +38,20 @@ def exact(a):
     return {k: v.tolist() for k, v in s.items()}
 
 
-def apply(root):
+def apply(root, manifest=None, split=None, units=None):
+    """units/split: the dataset's episodes (the converter passes them; else read ovmm_episode_index.json)."""
     root = Path(root)
+    frozen = {}
+    if manifest:
+        m = json.loads(Path(manifest).read_text())
+        if units is None:
+            idx = json.loads((root / "ovmm_episode_index.json").read_text())
+            units, split = [str(e["unit"]) for e in idx["episodes"]], idx.get("split")
+        if units != m[split]:
+            raise SystemExit(f"{root}: episodes are not exactly the manifest's {split} split")
+        frozen = {"manifest": str(manifest), "manifest_sha256": hashlib.sha256(Path(manifest).read_bytes()).hexdigest(),
+                  "dataset_version": m["dataset_version"], "split": split, "episodes": len(units),
+                  "computed_from": f"exactly the frozen manifest's {split} episodes (all frames after settle truncation)"}
     sf = root / "meta" / "stats.json"
     stats = json.loads(sf.read_text())
     agg = root / "meta" / "stats_lerobot_aggregate.json"
@@ -57,11 +72,15 @@ def apply(root):
     tmp.replace(sf)
     (root / "meta" / "exact_stats.json").write_text(json.dumps(
         {"keys": list(KEYS), "method": "exact global statistics over all frames (exact_stats.py)",
-         "frames": int(stats[KEYS[0]]["count"][0]), "replaced_aggregate_error": report}, indent=1))
+         "frames": int(stats[KEYS[0]]["count"][0]), "replaced_aggregate_error": report,
+         "stats_sha256": hashlib.sha256(sf.read_bytes()).hexdigest(), **frozen}, indent=1))
     print("###EXACT_STATS###" + json.dumps({"root": str(root), **report}), flush=True)
     return report
 
 
 if __name__ == "__main__":
-    for r in sys.argv[1:]:
-        apply(r)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("root")
+    ap.add_argument("--manifest", default=None)
+    a = ap.parse_args()
+    apply(a.root, a.manifest)

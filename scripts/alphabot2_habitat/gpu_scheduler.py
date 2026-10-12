@@ -336,8 +336,9 @@ def run_convert(j):
         out = ds_dir(rnd, split)
         idx = f"{out}/ovmm_episode_index.json"
         if os.path.exists(idx) and [str(e["unit"]) for e in json.load(open(idx))["episodes"]] == m[split]:
-            if not os.path.exists(f"{out}/meta/exact_stats.json"):  # adopted pre-fix dataset: exact stats
-                rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/exact_stats.py", out],
+            es = f"{out}/meta/exact_stats.json"
+            if not os.path.exists(es) or json.load(open(es)).get("manifest_sha256") != sha256(mp):
+                rc = subprocess.run([CFG["sft"]["python"], f"{L}/scripts/alphabot2_pi05/exact_stats.py", out, "--manifest", mp],
                                     stdout=open(f"{LOGS}/exact_stats_{rnd}.log", "a"), stderr=subprocess.STDOUT).returncode
                 if rc != 0:
                     j["status"] = "blocked"
@@ -364,6 +365,8 @@ def run_convert(j):
 
 def run_iface(j):
     """Policy-interface gate on the round's converted dataset (hard gate before any SFT of the round)."""
+    if pgrep("alphabot2_pi05/interface_gate.py"):
+        return                                                     # a previous scheduler's gate run: let it end
     cfg, _, _ = sft_config(j["round"], "balanced")
     g = acquire(1, 1, CFG["eval"]["server_min_free_mib"])
     if g is None:
@@ -411,9 +414,10 @@ def run_sft(j):
                            f"--master_port={CFG['sft']['master_port']}", f"{L}/scripts/alphabot2_pi05/sft_ovmm.py",
                            "--config", cfg], f"{LOGS}/sft_{name}_attempt{j['attempts']}.log",
                           env={**env_pi(), "CUDA_VISIBLE_DEVICES": ",".join(map(str, chosen))}, cwd=f"{L}/scripts/alphabot2_pi05")
-        j.update({"status": "running", "gpus": chosen})
+        j.update({"status": "running", "gpus": chosen, "code_commit": subprocess.run(
+            ["git", "-C", L, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()})
         save()
-        event("sft_launch", run=name, gpus=chosen, attempt=j["attempts"])
+        event("sft_launch", run=name, gpus=chosen, attempt=j["attempts"], code_commit=j["code_commit"])
         return
     if p.poll() is None:
         try:
@@ -756,7 +760,11 @@ def _write_run_info(rnd):
         if os.path.exists(idx):
             d = json.load(open(idx))
             ds[split] = {"root": d["root"], "episodes": len(d["episodes"]), "frames": d["frames"],
-                         "keep_settle": d["keep_settle"], "manifest_sha256": d.get("manifest_sha256")}
+                         "keep_settle": d["keep_settle"], "manifest_sha256": d.get("manifest_sha256"),
+                         "stats_sha256": sha256(f"{ds_dir(rnd, split)}/meta/stats.json")}
+            es = f"{ds_dir(rnd, split)}/meta/exact_stats.json"
+            if os.path.exists(es):
+                ds[split]["exact_stats"] = json.load(open(es))
             pio = f"{ds_dir(rnd, split)}/policy_io.json"
             if os.path.exists(pio):
                 ds[split]["policy_io_sha256"] = sha256(pio)
@@ -768,7 +776,10 @@ def _write_run_info(rnd):
     ri["sft"] = {}
     for v in ROUNDS[rnd]["variants"]:
         cfg, out, name = sft_config(rnd, v)
-        e = {"config": cfg, "config_sha256": sha256(cfg), "out": out, "checkpoint": f"{out}/best"}
+        e = {"config": cfg, "config_sha256": sha256(cfg), "out": out, "checkpoint": f"{out}/best",
+             "launch_code_commit": next((x.get("code_commit") for x in st["jobs"] if x["round"] == rnd and x["kind"] == "sft"
+                                         and x["variant"] == v), None),
+             "padding_contract": "ovmm_model.flow_losses: padded action tokens masked out of attention; reduce_masked: zero weight"}
         if os.path.exists(f"{out}/summary.json"):
             e["summary"] = json.load(open(f"{out}/summary.json"))
         ri["sft"][v] = e
@@ -806,6 +817,16 @@ def run_jobs():
             event("waiting_for_sft_env", missing=miss)
         return
     j = pend[0]
+    try:                                                           # operator hold: RUNS/scheduler_hold.json
+        hold = json.load(open(f"{R}/scheduler_hold.json"))
+    except (OSError, ValueError):
+        hold = {}
+    if j["kind"] in hold.get("hold_kinds", []):
+        if st.get("hold_logged") != [j["round"], j["kind"], hold.get("reason")]:
+            st["hold_logged"] = [j["round"], j["kind"], hold.get("reason")]
+            save()
+            event("job_held", round=j["round"], kind=j["kind"], variant=j.get("variant"), reason=hold.get("reason"))
+        return
     if j["kind"] == "convert":
         run_convert(j)
     elif j["kind"] == "iface":
