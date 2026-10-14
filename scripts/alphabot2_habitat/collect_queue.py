@@ -47,7 +47,8 @@ def build(unit_files, src, exclusions=None):
     excl = set()
     if exclusions and os.path.exists(exclusions):
         x = json.load(open(exclusions))
-        excl = {str(e) for e in (x.get("episodes") or x.get("reset_nondeterministic") or [])}
+        for e in (x.get("episodes") or []) + (x.get("reset_nondeterministic") or []):
+            excl.add(str(e["episode_id"]) if isinstance(e, dict) else str(e))
     rs = results(src)
     per_ep = defaultdict(lambda: [0, 0])                       # episode -> [processed, accepted]
     scene_acc, arm_acc = Counter(), Counter()
