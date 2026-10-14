@@ -113,7 +113,15 @@ def main():
     seen0 = 0
     if resume:
         st = torch.load(resume / "trainer.pt", map_location="cpu", weights_only=False)
-        opt.load_state_dict(st["optimizer"])
+        if st.get("sharded_world"):                                     # per-rank ZeRO shards (multi-GPU checkpoint)
+            if ddp and st["sharded_world"] == world:
+                sh = torch.load(resume / f"optim_rank{rank}.pt", map_location="cpu", weights_only=False)
+                opt.optim.load_state_dict(sh["optimizer_shard"])
+            elif rank == 0:
+                print(f"WARNING optimizer state not restored: checkpoint sharded over {st['sharded_world']} ranks, "
+                      f"this run has {world}; weights resumed, AdamW moments restart", flush=True)
+        else:
+            opt.load_state_dict(st["optimizer"])                        # consolidated (single-process) checkpoint
         start, best = st["step"], tuple(st["best"])
         # samples actually seen before this attempt (the world size may differ between attempts);
         # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
@@ -166,12 +174,18 @@ def main():
         tmp.rename(d)
 
     def checkpoint(step):
+        # Multi-GPU: each rank writes its own ZeRO optimizer shard. ZeroRedundancyOptimizer.consolidate_state_dict
+        # (torch 2.8) hangs in its object broadcast and then fails ("SymIntArrayRef expected to contain only
+        # concrete integers") -- it killed every 3-GPU attempt at its first checkpoint.
+        d = out / f"ckpt_step{step:07d}"
         if ddp:
-            opt.consolidate_state_dict(to=0)
+            d.mkdir(parents=True, exist_ok=True)
+            torch.save({"optimizer_shard": opt.optim.state_dict(), "rank": rank, "world": world}, d / f"optim_rank{rank}.pt")
+            dist.barrier()
         if rank == 0:
-            d = out / f"ckpt_step{step:07d}"
             save_policy(d / "policy")
-            torch.save({"optimizer": opt.state_dict(), "step": step, "best": list(best),
+            torch.save({"optimizer": None if ddp else opt.state_dict(), "sharded_world": world if ddp else None,
+                        "step": step, "best": list(best),
                         "samples_seen": seen0 + (step - start) * int(C["batch_per_gpu"]) * world}, d / "trainer.pt")
             (d / "COMPLETE").write_text(time.strftime("%F %T"))
             for old in sorted(p for p in out.glob("ckpt_step*") if (p / "COMPLETE").exists())[:-int(C["keep_ckpts"])]:
