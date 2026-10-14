@@ -195,7 +195,7 @@ def acquire(n_min, n_max, min_free):
     ok = [i for i, x in g.items() if not x["foreign"]]
     idle = [i for i in ok if i not in owned and g[i]["used"] < 500 and g[i]["free"] >= min_free]
     ours = [i for i in ok if i in owned]
-    spare = ours[CFG["collect"]["min_collect_gpus"]:]
+    spare = ours[0 if st.get("collection_complete") else CFG["collect"]["min_collect_gpus"]:]
     chosen = (idle + spare)[:n_max]
     if len(chosen) < n_min:
         return None
@@ -422,7 +422,7 @@ def run_sft(j):
                            f"--master_port={CFG['sft']['master_port']}", f"{L}/scripts/alphabot2_pi05/sft_ovmm.py",
                            "--config", cfg], f"{LOGS}/sft_{name}_attempt{j['attempts']}.log",
                           env={**env_pi(), "CUDA_VISIBLE_DEVICES": ",".join(map(str, chosen))}, cwd=f"{L}/scripts/alphabot2_pi05")
-        j.update({"status": "running", "gpus": chosen, "code_commit": subprocess.run(
+        j.update({"status": "running", "gpus": chosen, "launched_at": time.time(), "code_commit": subprocess.run(
             ["git", "-C", L, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()})
         save()
         event("sft_launch", run=name, gpus=chosen, attempt=j["attempts"], code_commit=j["code_commit"])
@@ -430,7 +430,8 @@ def run_sft(j):
     if p.poll() is None:
         try:
             hb = json.load(open(f"{out}/heartbeat.json"))
-            if time.time() - hb["time"] > CFG["sft"]["stall_s"]:
+            # a heartbeat older than this launch (a resumed run's previous attempt) does not count
+            if time.time() - max(hb["time"], j.get("launched_at", 0)) > CFG["sft"]["stall_s"]:
                 event("sft_stall_kill", run=name, heartbeat=hb)
                 os.killpg(p.pid, signal.SIGTERM)
         except (OSError, ValueError):
