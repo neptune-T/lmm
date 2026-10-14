@@ -22,6 +22,26 @@ if [ ! -x "$ENV/bin/python" ]; then
     fi
   ) 9>"$(dirname "$ENV")/.restore.lock"
 fi
+# Post-restore extras, once per restored env (host moves expose what the archive lacks):
+#  * pip packages installed after the archive was made (archive/home_robot39.extra-requirements.txt;
+#    tensorboard: habitat_baselines imports torch.utils.tensorboard at import time);
+#  * the glvnd EGL dispatch libs (libEGL.so.1) when the host lacks them -- extracted from the archived
+#    debs into the env's lib (the NVIDIA EGL vendor ICD comes from the driver mount).
+if [ ! -f "$ENV/.extras_ok" ]; then
+  (
+    flock 9
+    if [ ! -f "$ENV/.extras_ok" ]; then
+      XR="$ROOT/archive/home_robot39.extra-requirements.txt"
+      [ -f "$XR" ] && "$ENV/bin/python" -m pip install -q -r "$XR" -i https://pypi.tuna.tsinghua.edu.cn/simple >&2
+      if ! ldconfig -p | grep -q "libEGL.so.1 " && [ ! -e "$ENV/lib/libEGL.so.1" ]; then
+        T=$(mktemp -d /dev/shm/egl.XXXX)
+        for d in "$ROOT"/archive/egl/*.deb; do dpkg -x "$d" "$T"; done
+        cp -a "$T"/usr/lib/x86_64-linux-gnu/lib{EGL,GLdispatch}.so* "$ENV/lib/" && rm -rf "$T"
+      fi
+      touch "$ENV/.extras_ok"
+    fi
+  ) 9>"$(dirname "$ENV")/.restore.lock"
+fi
 # OVMM configs use data/ paths relative to the working directory: run from a fast data tree on
 # /dev/shm (small files copied, HSSD object meshes symlinked to the bosfs archive), staged once.
 RUN_DIR=${OVMM_RUN_DIR:-/dev/shm/hr}
