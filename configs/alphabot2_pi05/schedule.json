@@ -3,10 +3,8 @@
   "runs": "/workspace/runtime/runs",
   "collect": {
     "out": "/workspace/runtime/runs/collect_clean_v1",
-    "units_file": "/workspace/runtime/runs/lists/collect_train.txt",
-    "start_gpus": [
-      1
-    ],
+    "units_file": "/workspace/runtime/runs/lists/collect_queue.txt",
+    "start_gpus": [],
     "per_gpu": 4,
     "poll_s": 120,
     "min_collect_gpus": 1,
@@ -15,7 +13,14 @@
     "extra_worker_starts": [
       "90,91@2026-10-11 20:43:50"
     ],
-    "extra_worker_starts_note": "clean pilot workers 90/91 (pipeline.sh stage 8 'pilot_clean start', pipeline_status.jsonl); rows they wrote live in collect_clean_v1"
+    "extra_worker_starts_note": "clean pilot workers 90/91 (pipeline.sh stage 8 'pilot_clean start', pipeline_status.jsonl); rows they wrote live in collect_clean_v1",
+    "queue_units": [
+      "/workspace/runtime/runs/feasibility/units_train.json",
+      "/workspace/runtime/runs/feasibility/units_train_r3to8.json"
+    ],
+    "queue_exclusions": "/workspace/runtime/runs/feasibility/manual_exclusions.json",
+    "requeue_s": 1800,
+    "queue_note": "2026-10-14: seed bank extended with replicas 3-8 of the 742 AlphaBot-feasible train episodes (same deterministic embodiment screen); collect_queue.py orders units by p_accept x scene scarcity x arm balance x repeat decay; collection adopts GPUs only when idle (after SFT), never reserved GPU 3, and hands GPUs to H_exec calibration / eval on request"
   },
   "data_check_every_s": 900,
   "rounds": [

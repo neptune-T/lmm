@@ -20,6 +20,28 @@ RUN = os.environ.get("RUN", "/workspace/lmm/scripts/alphabot2_habitat/run_habita
 PILOT = os.environ.get("PILOT", "/workspace/lmm/scripts/alphabot2_habitat/pilot.py")
 LOGS = os.path.join(os.environ.get("ALPHABOT2_LOG_DIR", "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/logs"), "collect_workers")
 os.makedirs(LOGS, exist_ok=True)
+RESERVED = {int(g) for g in os.environ.get("RESERVED_GPUS", "").split(",") if g != ""}   # never adopted
+QUEUE_UNITS = [f for f in os.environ.get("QUEUE_UNITS", "").split(",") if f]          # priority-queue sources
+QUEUE_EXCL = os.environ.get("QUEUE_EXCLUSIONS")
+REQUEUE_S = int(os.environ.get("REQUEUE_S", "1800"))
+last_queue = 0.0
+
+
+def requeue():
+    """Rewrite EPF as the priority queue (collect_queue.py); workers re-read it when it changes."""
+    global last_queue
+    if not QUEUE_UNITS or time.time() - last_queue < REQUEUE_S:
+        return
+    last_queue = time.time()
+    cmd = ["python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "collect_queue.py"),
+           "--units", *QUEUE_UNITS, "--results", OUT, "--out", EPF]
+    if QUEUE_EXCL:
+        cmd += ["--exclusions", QUEUE_EXCL]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    print(time.strftime("%F %T"), "REQUEUE", (r.stdout.strip().splitlines() or [r.stderr[-300:]])[-1], flush=True)
+
+
+requeue()
 eps = open(EPF).read().replace(",", "\n").split()
 owned = [int(g) for g in os.environ.get("START_GPUS", "").split(",") if g != ""]
 procs = {}                                                     # (gpu, slot) -> Popen
@@ -58,6 +80,11 @@ def results():
 
 
 while True:
+    requeue()
+    try:
+        eps = open(EPF).read().replace(",", "\n").split()
+    except OSError:
+        pass
     rs = results()
     todo = [e for e in eps if e not in rs]
     alive = {k: p for k, p in procs.items() if p.poll() is None}
@@ -76,7 +103,7 @@ while True:
         owned.remove(g)
         print(time.strftime("%F %T"), "RELEASE_GPU", g, flush=True)
     for idx, mem, util in gpus():
-        if idx not in owned and idx not in release and mem < IDLE_MIB and util < 5:
+        if idx not in owned and idx not in release and idx not in RESERVED and mem < IDLE_MIB and util < 5:
             owned.append(idx)
             print(time.strftime("%F %T"), "ADOPT_GPU", idx, flush=True)
     if todo:

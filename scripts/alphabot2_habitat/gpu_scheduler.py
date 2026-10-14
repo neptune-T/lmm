@@ -169,6 +169,8 @@ def ensure_collection():
         return
     C = CFG["collect"]
     cs = collect_status()
+    if not os.path.exists(C["units_file"]):
+        return                                                     # queue not built yet
     if cs.get("todo") == 0 and cs.get("processed") and os.path.getmtime(C["units_file"]) < os.path.getmtime(
             f"{C['out']}/supervisor_status.json"):
         if not st.get("collection_complete"):                      # seed bank exhausted: nothing to restart for
@@ -184,7 +186,10 @@ def ensure_collection():
     procs["collect"] = sh(["python3", f"{S}/collect_supervisor.py"], f"{LOGS}/supervisor.log",
                           env={"OUT": C["out"], "EPISODE_FILE": C["units_file"], "START_GPUS": ",".join(map(str, C["start_gpus"])),
                                "PER_GPU": str(C["per_gpu"]), "POLL_S": str(C["poll_s"]), "CLAIM_DIR": "/dev/shm/alphabot2_claims",
-                               "RUN": f"{S}/run_habitat.sh", "PILOT": f"{S}/pilot.py"})
+                               "RUN": f"{S}/run_habitat.sh", "PILOT": f"{S}/pilot.py",
+                               "RESERVED_GPUS": ",".join(map(str, CFG.get("reserved_gpus", []))),
+                               "QUEUE_UNITS": ",".join(C.get("queue_units", [])), "QUEUE_EXCLUSIONS": C.get("queue_exclusions", ""),
+                               "REQUEUE_S": str(C.get("requeue_s", 1800))})
 
 
 def acquire(n_min, n_max, min_free):

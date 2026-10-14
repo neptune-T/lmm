@@ -82,6 +82,30 @@ for f in sorted(n for n in set(glob.glob(f"{OUT}/results*.jsonl")) | {f"{OUT}/re
         except (ValueError, KeyError):
             pass                                             # a torn last line from a killed worker
 EPS = [e for e in EPS if e not in DONE]
+
+
+def queue():
+    """Units in EPISODE_FILE order; with CLAIM_DIR the file is re-read whenever it changes (the supervisor
+    rewrites it as a priority queue), so this worker always takes the best unclaimed unit next."""
+    f = os.environ.get("EPISODE_FILE")
+    if not (CLAIM_DIR and f):
+        yield from EPS
+        return
+    seen, mt, cur = set(DONE), None, []
+    while True:
+        try:
+            m = os.path.getmtime(f)
+            if m != mt:
+                mt, cur = m, [e for e in open(f).read().replace(",", "\n").split() if e not in seen]
+        except OSError:
+            pass
+        if not cur:
+            return
+        e = cur.pop(0)
+        seen.add(e)
+        yield e
+
+
 print("COLLECT", json.dumps({"worker": WK, "nworkers": NW, "todo": len(EPS), "skipped_done": len(DONE),
                              "arm_mode": ARM_MODE}), flush=True)
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split="train")
@@ -154,7 +178,7 @@ except OSError:
     CODE_COMMIT = ""
 n_ok = 0
 res_f = open(f"{OUT}/results_w{WK:02d}.jsonl", "a")
-for eid in EPS:
+for eid in queue():
     if n_ok >= MAX_OK:
         break
     if not claim(eid):

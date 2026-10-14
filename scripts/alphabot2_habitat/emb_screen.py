@@ -28,6 +28,7 @@ OUT = os.environ["OUT"]
 os.makedirs(OUT, exist_ok=True)
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
 REPLICAS = int(os.environ.get("REPLICAS", "3"))
+REPLICA_START = int(os.environ.get("REPLICA_START", "0"))     # seed-bank extension: screen replicas [START, REPLICAS)
 EVERY = int(os.environ.get("DETERMINISM_EVERY", "25"))
 rows = [r for r in json.load(open(os.environ["SCREEN"])) if r["feasible"]]
 scenes = sorted({r["scene"] for r in rows})[WK::NW]                    # shard by scene: one scene load each
@@ -86,7 +87,7 @@ with open(fn, "a") as f:
         t0 = time.time()
         try:
             first = None
-            for rep in range(REPLICAS):
+            for rep in range(REPLICA_START, REPLICAS):
                 u = {"replica": rep, "seed": HE.episode_seed(eid, rep)}
                 try:
                     HE.reset_to(env, eid, rep)
