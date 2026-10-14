@@ -110,13 +110,17 @@ def main():
         opt = torch.optim.AdamW(params, lr=O["lr"], betas=tuple(O["betas"]), eps=1e-8, weight_decay=O["weight_decay"])
     start = 0
     best = (float("inf"), -1)
+    seen0 = 0
     if resume:
         st = torch.load(resume / "trainer.pt", map_location="cpu", weights_only=False)
         opt.load_state_dict(st["optimizer"])
         start, best = st["step"], tuple(st["best"])
+        # samples actually seen before this attempt (the world size may differ between attempts);
+        # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
+        seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * int(C["batch_per_gpu"]) * world)
     if rank == 0:
         info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
-                 "resume_from": str(resume) if resume else None, "start_step": start, "world": world,
+                 "resume_from": str(resume) if resume else None, "start_step": start, "world": world, "samples_seen_at_start": seen0,
                  "global_batch": int(C["batch_per_gpu"]) * world,
                  "planned_samples": int(C["batch_per_gpu"]) * world * steps,
                  "planned_effective_epochs": int(C["batch_per_gpu"]) * world * steps / max(1, len(tr)),
@@ -167,7 +171,8 @@ def main():
         if rank == 0:
             d = out / f"ckpt_step{step:07d}"
             save_policy(d / "policy")
-            torch.save({"optimizer": opt.state_dict(), "step": step, "best": list(best)}, d / "trainer.pt")
+            torch.save({"optimizer": opt.state_dict(), "step": step, "best": list(best),
+                        "samples_seen": seen0 + (step - start) * int(C["batch_per_gpu"]) * world}, d / "trainer.pt")
             (d / "COMPLETE").write_text(time.strftime("%F %T"))
             for old in sorted(p for p in out.glob("ckpt_step*") if (p / "COMPLETE").exists())[:-int(C["keep_ckpts"])]:
                 shutil.rmtree(old, ignore_errors=True)
@@ -194,7 +199,7 @@ def main():
         n_log += len(batch["action"]) * world
         if rank == 0 and (step % 25 == 0 or step == start + 1):
             dt = time.time() - t_log
-            seen = step * int(C["batch_per_gpu"]) * world
+            seen = seen0 + (step - start) * int(C["batch_per_gpu"]) * world
             rec = {"step": step, "samples_seen": seen, "effective_epochs": seen / len(tr), "loss": float(loss), "group_loss": {g: float(np.asarray(inf["loss_per_dim"])[s].mean())
                                                                     for g, s in GROUPS.items()},
                    "grad_norm": gn, "lr": lr, "samples_per_s": n_log / max(dt, 1e-9),
@@ -220,7 +225,7 @@ def main():
             checkpoint(step)
     if rank == 0:
         save_policy(out / "last")
-        seen = steps * int(C["batch_per_gpu"]) * world
+        seen = seen0 + (steps - start) * int(C["batch_per_gpu"]) * world
         summary = {"best_val_loss": best[0], "best_step": best[1], "steps": steps, "world": world,
                    "global_batch": int(C["batch_per_gpu"]) * world, "samples_seen": seen,
                    "train_frames": len(tr), "train_episodes": mtr.total_episodes, "effective_epochs": seen / len(tr),
