@@ -65,14 +65,15 @@
       "uniform": "/workspace/lmm/configs/alphabot2_pi05/sft_ovmm_uniform.yaml"
     },
     "datasets": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/datasets",
-    "out": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft",
+    "out": "/dev/shm/lmm_runtime/sft",
     "min_gpus": 1,
     "max_gpus": 4,
     "min_free_mib": 76000,
     "max_restarts": 5,
     "stall_s": 2400,
     "master_port": 29531,
-    "assets": "/workspace/runtime/pi05"
+    "assets": "/workspace/runtime/pi05",
+    "out_note": "2026-10-14 host 180.76.138.216: CFS was full (previous SFT died on ENOSPC) and /nix is read-only, so SFT writes to /dev/shm; sft_mirror.sh copies completed checkpoints / best / logs to /workspace/runtime/sft_mirror"
   },
   "eval": {
     "split": "val",
@@ -102,5 +103,9 @@
   "pilot_gate": "pilot_clean",
   "reset_contract": "hard world rebuild -> seeded task reset -> episode (frozen; no soft-reset path)",
   "stop_after_round": "sanity_v1",
-  "stop_after_round_note": "Stage 1: after sanity_v1's balanced normal-init eval nothing new starts (collection continues); results wait for the user's review"
+  "stop_after_round_note": "Stage 1: after sanity_v1's balanced normal-init eval nothing new starts (collection continues); results wait for the user's review",
+  "reserved_gpus": [
+    3
+  ],
+  "reserved_gpus_note": "GPU 3 runs the host keep-alive (the platform stops the machine when no GPU is busy); never scheduled"
 }

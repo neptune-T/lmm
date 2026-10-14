@@ -14,7 +14,7 @@ precision: {params: float32, autocast: bfloat16}      # bf16-only updates vanish
 gradient_checkpointing: true
 val_every: 1000
 ckpt_every: 1000          # model + optimizer + sampler/rng state, atomic; resume picks the newest
-keep_ckpts: 2
+keep_ckpts: 1          # /dev/shm budget (1 resumable 40 GB checkpoint + best 16 GB); mirrored to /workspace
 num_workers: 12
 seed: 1000
 sampling:

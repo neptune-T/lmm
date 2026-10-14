@@ -100,7 +100,8 @@ def gpus():
     for l in q.strip().splitlines():
         i, uuid, used, tot, util = [x.strip() for x in l.split(",")]
         out[int(i)] = {"index": int(i), "used": int(used), "free": int(tot) - int(used), "util": int(util),
-                       "foreign": uuid in foreign or now - seen.get(uuid, -1e18) < FOREIGN_STICKY_S}
+                       "foreign": (uuid in foreign or now - seen.get(uuid, -1e18) < FOREIGN_STICKY_S
+                                   or int(i) in CFG.get("reserved_gpus", []))}
     return out
 
 
