@@ -160,6 +160,10 @@ def main():
     val = by["val"]
     if set(train) & set(val):
         raise SystemExit("train/val overlap")
+    base = lambda u: str(rows[u].get("episode") or u.split("#")[0])          # replicas share the base episode
+    leak = {base(u) for u in train} & {base(u) for u in val}
+    if leak:
+        raise SystemExit(f"base episodes in both train and val (replica leakage): {sorted(leak)[:10]}")
 
     def info(u):
         r = rows[u]
@@ -178,6 +182,8 @@ def main():
          "train_rule": f"train-split snapshot sorted by unit id, first {a.max_train or 'all'}",
          "train": train, "val": val, "n_train": len(train), "n_val": len(val),
          "excluded_episodes": sorted(excluded), "exclude_source": a.exclude_episodes,
+         "split_unit": "base OVMM episode (all seed-bank replicas of an episode on the same side)",
+         "base_episodes": {"train": len({base(u) for u in train}), "val": len({base(u) for u in val})},
          "train_sha256": sha(train), "val_sha256": sha(val),
          "train_detail": [details[u] for u in train], "val_detail": [details[u] for u in val],
          "provenance_sources": sorted({d["code_commit_from"].split()[0] for d in details.values()}),
