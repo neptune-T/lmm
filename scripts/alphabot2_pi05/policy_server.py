@@ -58,7 +58,9 @@ class Server:
                  "task": [r["task"] for r in reqs]}
         for c in self.cams:
             im = torch.as_tensor(np.stack([np.ascontiguousarray(r["images"][c]) for r in reqs]))
-            batch[f"observation.images.{c}"] = im.permute(0, 3, 1, 2).float() / 255.0
+            # contiguous NCHW like the training dataloader: a channels-last view makes cuDNN pick a different
+            # (TF32) conv algorithm for the vision patch embedding, ~1e-3 action drift after flow sampling
+            batch[f"observation.images.{c}"] = im.permute(0, 3, 1, 2).contiguous().float() / 255.0
         noise = torch.stack([torch.randn(self.cfg.chunk_size, self.cfg.max_action_dim,
                                          generator=torch.Generator().manual_seed(int(r.get("seed", 0))))
                              for r in reqs]).to(self.device)
