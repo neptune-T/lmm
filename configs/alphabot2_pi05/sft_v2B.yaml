@@ -3,7 +3,7 @@
 # past proprio is the arm tuck during navigation anyway)
 # + all accepted v2 trajectories (frozen manifest v2) + nav omega class balance (turns were already oversampled 2.3x in sanity_v1)
 # + steering loss (omega x4 in the flow loss; smooth-L1 on the one-step denoised v/omega, first 10 chunk steps).
-# Same budget for A and B: 1 GPU, batch 16, 10k steps; selection by plain masked VAL flow loss. No map / semantic controller / RL.
+# Same budget for A and B: 1 GPU, effective batch 16 (micro 8 x accumulation 2: B carries 6 images), 10k steps; selection by plain masked VAL flow loss. No map / semantic controller / RL.
 name: sft_v2B
 init_checkpoint: /workspace/runtime/pi05/ckpt
 train_data: /mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/datasets/alphabot2_ovmm_v2_train
@@ -23,7 +23,8 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
 steps: 10000
-batch_per_gpu: 16
+batch_per_gpu: 8
+grad_accum: 2
 precision:
   params: float32
   autocast: bfloat16

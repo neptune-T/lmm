@@ -19,7 +19,7 @@ Exit codes: 0 done, 3 non-finite loss (not retried by the scheduler), other = cr
 
     torchrun --nproc_per_node N sft_ovmm.py --config configs/alphabot2_pi05/sft_ovmm_balanced.yaml
 """
-import argparse, json, math, os, shutil, sys, time
+import argparse, contextlib, json, math, os, shutil, sys, time
 from pathlib import Path
 
 import numpy as np
@@ -87,6 +87,8 @@ def main():
     resume = newest_ckpt(out)
     src = str(resume / "policy") if resume else C["init_checkpoint"]
     hist, loss_cfg = C.get("history"), C.get("loss")
+    accum = int(C.get("grad_accum", 1))                                  # micro-batches per optimizer step
+    gb = int(C["batch_per_gpu"]) * world * accum                         # samples per optimizer step
     cfg = ovmm_model.build_config(C["init_checkpoint"], device=dev, dtype=C["precision"]["params"],
                                   gradient_checkpointing=bool(C.get("gradient_checkpointing", True)), history=hist)
     mtr = LeRobotDatasetMetadata("local/alphabot2_ovmm_train", root=C["train_data"])
@@ -129,20 +131,19 @@ def main():
         start, best = st["step"], tuple(st["best"])
         # samples actually seen before this attempt (the world size may differ between attempts);
         # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
-        seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * int(C["batch_per_gpu"]) * world)
+        seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * gb)
     if rank == 0:
         info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
                  "state_dim": ovmm_model.state_dim(hist), "history": hist, "loss_cfg": loss_cfg, "delta_timestamps": dts,
                  "resume_from": str(resume) if resume else None, "start_step": start, "world": world, "samples_seen_at_start": seen0,
-                 "global_batch": int(C["batch_per_gpu"]) * world,
-                 "planned_samples": int(C["batch_per_gpu"]) * world * steps,
-                 "planned_effective_epochs": int(C["batch_per_gpu"]) * world * steps / max(1, len(tr)),
+                 "global_batch": gb, "micro_batch_per_gpu": int(C["batch_per_gpu"]), "grad_accum": accum,
+                 "planned_samples": gb * steps, "planned_effective_epochs": gb * steps / max(1, len(tr)),
                  "train_episodes": mtr.total_episodes, "train_frames": mtr.total_frames, "val_frames": len(va),
                  "trainable_params": sum(p.numel() for p in params), "sampling": winfo}
         (out / f"run_info_step{start:06d}.json").write_text(json.dumps(info0, indent=1, default=str))
         print("INFO", json.dumps({k: v for k, v in info0.items() if k != "config"}, default=str), flush=True)
 
-    loader = torch.utils.data.DataLoader(tr, batch_sampler=WeightedBatches(w, int(C["batch_per_gpu"]), int(C["seed"]), rank, start),
+    loader = torch.utils.data.DataLoader(tr, batch_sampler=WeightedBatches(w, int(C["batch_per_gpu"]), int(C["seed"]), rank, start * accum),
                                          num_workers=int(C["num_workers"]), pin_memory=True, persistent_workers=True)
     vidx = np.random.default_rng(0).choice(len(va), size=min(512, len(va)), replace=False)
     vloader = torch.utils.data.DataLoader(torch.utils.data.Subset(va, vidx.tolist()), batch_size=int(C["batch_per_gpu"]),
@@ -192,7 +193,7 @@ def main():
             save_policy(d / "policy")
             torch.save({"optimizer": None if ddp else opt.state_dict(), "sharded_world": world if ddp else None,
                         "step": step, "best": list(best),
-                        "samples_seen": seen0 + (step - start) * int(C["batch_per_gpu"]) * world}, d / "trainer.pt")
+                        "samples_seen": seen0 + (step - start) * gb}, d / "trainer.pt")
             (d / "COMPLETE").write_text(time.strftime("%F %T"))
             for old in sorted(p for p in out.glob("ckpt_step*") if (p / "COMPLETE").exists())[:-int(C["keep_ckpts"])]:
                 shutil.rmtree(old, ignore_errors=True)
@@ -203,23 +204,27 @@ def main():
     it = iter(loader)
     t_log, n_log = time.time(), 0
     for step in range(start + 1, steps + 1):
-        batch = ovmm_model.apply_history(next(it), hist)
         lr = lr_at(step - 1, O["lr"], O["warmup"], steps, O["decay_lr"])
         for g in opt.param_groups:
             g["lr"] = lr
-        with amp:
-            loss, inf = model(pre(batch), batch["action_is_pad"])
-        if not torch.isfinite(loss):
-            print(f"NONFINITE loss at step {step}", flush=True)
-            sys.exit(3)
-        loss.backward()
+        for micro in range(accum):                                        # gradient accumulation (same samples/step)
+            batch = ovmm_model.apply_history(next(it), hist)
+            sync = (not ddp) or micro == accum - 1
+            ctx = model.no_sync() if (ddp and not sync) else contextlib.nullcontext()
+            with ctx:
+                with amp:
+                    loss, inf = model(pre(batch), batch["action_is_pad"])
+                if not torch.isfinite(loss):
+                    print(f"NONFINITE loss at step {step}", flush=True)
+                    sys.exit(3)
+                (loss / accum).backward()
         gn = float(torch.nn.utils.clip_grad_norm_(params, O["grad_clip"]))
         opt.step()
         opt.zero_grad(set_to_none=True)
-        n_log += len(batch["action"]) * world
+        n_log += len(batch["action"]) * world * accum
         if rank == 0 and (step % 25 == 0 or step == start + 1):
             dt = time.time() - t_log
-            seen = seen0 + (step - start) * int(C["batch_per_gpu"]) * world
+            seen = seen0 + (step - start) * gb
             rec = {"step": step, "samples_seen": seen, "effective_epochs": seen / len(tr), "loss": float(loss), "group_loss": {g: float(np.asarray(inf["loss_per_dim"])[s].mean())
                                                                     for g, s in GROUPS.items()},
                    "grad_norm": gn, "lr": lr, "samples_per_s": n_log / max(dt, 1e-9),
@@ -246,9 +251,9 @@ def main():
             checkpoint(step)
     if rank == 0:
         save_policy(out / "last")
-        seen = seen0 + (steps - start) * int(C["batch_per_gpu"]) * world
+        seen = seen0 + (steps - start) * gb
         summary = {"best_val_loss": best[0], "best_step": best[1], "steps": steps, "world": world,
-                   "global_batch": int(C["batch_per_gpu"]) * world, "samples_seen": seen,
+                   "global_batch": gb, "grad_accum": accum, "samples_seen": seen,
                    "train_frames": len(tr), "train_episodes": mtr.total_episodes, "effective_epochs": seen / len(tr),
                    "unique_frame_coverage_note": "phase_balanced sampling draws with replacement by weight",
                    "selection": "lowest SFT-VAL flow-matching loss (fixed noise); evaluation episodes never used"}

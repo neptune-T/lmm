@@ -17,6 +17,12 @@ export PI05_CKPT=/workspace/runtime/pi05/ckpt PI05_SPM=/workspace/runtime/pi05/p
 ev() { echo "{\"time\": \"$(date '+%F %T')\", \"event\": \"$1\", \"mode\": \"$MODE\"${2:+, $2}}" | tee -a $O/events.jsonl; }
 accepted() { python3 -c "import json; print(json.load(open('$R/collect_clean_v1/supervisor_status.json'))['accepted'])"; }
 
+if [ "$MODE" = smoke ]; then                                        # smoke trains on GPU_EVAL: free it from collection
+  echo "{\"release_gpus\": [$GPU_EVAL]}" > $R/collect_clean_v1/collect_control.json
+  trap 'echo "{\"release_gpus\": []}" > $R/collect_clean_v1/collect_control.json' EXIT
+  sleep 150
+fi
+
 # ---------------------------------------------------------------- 1. frozen manifest
 M=$R/manifests/$TAG.json
 if [ ! -f $M ]; then
