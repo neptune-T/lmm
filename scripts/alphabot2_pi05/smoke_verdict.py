@@ -4,6 +4,7 @@
   sweep     each of w = 1, 2, 4: SFT DONE with finite losses; audit.json (v2-val navigation block present);
             closed_loop.json with >= 1 traced unit; decision.json with a chosen weight
   ab_train  v2smokeA / v2smokeB: DONE, finite train losses, best checkpoint saved; B ran with history inputs
+  server_consistency  consistency_A / _B: fp32 server == in-process (bit-exact), processors == train stats
   eval      eval_A / eval_B train_cl summary: eval_count >= 1, engineering_errors == 0; server READY
 
     python3 smoke_verdict.py --root RUNS/v2smoke --sft /dev/shm/lmm_runtime/sft --out VERDICT.json
@@ -80,7 +81,17 @@ def main():
         except (OSError, ValueError, KeyError) as e:
             ev[x] = {"pass": False, "error": repr(e)}
     v["eval"] = {"pass": all(x["pass"] for x in ev.values()), **ev}
-    v["ALL_PASS"] = all(v[k]["pass"] for k in ("gates", "sweep", "ab_train", "eval"))
+    sc = {}
+    for x in ("A", "B"):
+        try:
+            r = json.load(open(f"{R}/consistency_{x}.json"))
+            sc[x] = {"pass": bool(r["pass"]), "srv_vs_inproc_fp32": r["diffs"]["srv_fp32 vs in_fp32"]["max_chunk"],
+                     "normalizer_vs_train": max(r["saved_normalizer_vs_dataset_max_abs"].values()),
+                     "train_path_vs_inproc": r["diffs"]["train_path_fp32 vs in_fp32"]["max_chunk"]}
+        except (OSError, ValueError, KeyError) as e:
+            sc[x] = {"pass": False, "error": repr(e)}
+    v["server_consistency"] = {"pass": all(x["pass"] for x in sc.values()), **sc}
+    v["ALL_PASS"] = all(v[k]["pass"] for k in ("gates", "sweep", "ab_train", "server_consistency", "eval"))
     json.dump(v, open(a.out, "w"), indent=1)
     print(json.dumps(v, indent=1))
 

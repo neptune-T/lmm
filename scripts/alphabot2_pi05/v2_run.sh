@@ -125,7 +125,7 @@ PY
   fi
   for w in 1 2 4; do
     E=$SW/w$w; mkdir -p $E; ck=/dev/shm/lmm_runtime/sft/${TAG}sweep_w$w/best; port=$((5630 + w))
-    (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL setsid $PY policy_server.py --ckpt $ck --port $port > $E/server.log 2>&1 &)
+    (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL setsid $PY policy_server.py --ckpt $ck --port $port --dtype float32 > $E/server.log 2>&1 &)
     for i in $(seq 120); do grep -q READY $E/server.log 2>/dev/null && break; sleep 10; done
     (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL $PY diag_audit.py --ckpt $ck --train $DS/alphabot2_ovmm_${TAG}_train --val $DS/alphabot2_ovmm_${TAG}_val \
         --port $port --out $E/audit.json --n $([ "$MODE" = smoke ] && echo 20 || echo 300) --splits val > $E/audit.log 2>&1)
@@ -184,16 +184,24 @@ else
   sft A $GPU_EVAL; RA=$?; sft B $GPU_EVAL; RB=$?
 fi
 ev sft_done "\"rc_A\": $RA, \"rc_B\": $RB"
+for v in A B; do                                                  # serving path == model (fp32), processors == train stats
+  [ -f /dev/shm/lmm_runtime/sft/${TAG}$v/best/config.json ] || continue
+  (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL $PY server_consistency.py --ckpt /dev/shm/lmm_runtime/sft/${TAG}$v/best \
+      --data $DS/alphabot2_ovmm_${TAG}_train --out $O/consistency_$v.json --k $([ "$MODE" = smoke ] && echo 4 || echo 12) \
+      --port $((5660 + $([ $v = A ] && echo 0 || echo 2))) > $L/${TAG}_consistency_$v.log 2>&1)
+  python3 -c "import json,sys; r=json.load(open('$O/consistency_$v.json')); print('consistency $v', r['pass']); sys.exit(0 if r['pass'] else 1)" \
+    || { ev BLOCKED "\"gate\": \"SERVER_CONSISTENCY\", \"variant\": \"$v\""; exit 1; }
+done
 
 # ---------------------------------------------------------------- 5. eval (train-set closed loop + fixed OVMM-val set x 2 seeds)
 TRAIN_UNITS=$(cat $R/diag/sanity_v1/train_units.txt)
 VAL_UNITS=$(python3 -c "import json; print(','.join(json.load(open('$R/eval_splits/val_r3_calib_eval.json'))['eval']))")
 if [ "$MODE" = smoke ]; then TRAIN_UNITS=$(echo $TRAIN_UNITS | cut -d, -f1); VAL_UNITS=""; fi
-evalv() {  # variant port
-  local v=$1 port=$2 E=$O/eval_$1 ck=/dev/shm/lmm_runtime/sft/${TAG}$1/best hist=""
+evalv() {  # variant port [ckpt]
+  local v=$1 port=$2 E=$O/eval_$1 ck=${3:-/dev/shm/lmm_runtime/sft/${TAG}$1/best} hist=""
   [ "$v" = B ] && hist='{"camera": "camera_top", "offsets": [5, 10, 15], "state": true}'
   mkdir -p $E
-  (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL setsid $PY policy_server.py --ckpt $ck --port $port > $E/server.log 2>&1 &)
+  (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL setsid $PY policy_server.py --ckpt $ck --port $port --dtype float32 > $E/server.log 2>&1 &)
   for i in $(seq 120); do grep -q READY $E/server.log 2>/dev/null && break; sleep 10; done
   local NW=5 MAXS=$([ "$MODE" = smoke ] && echo 300 || echo 3000)
   run() {  # name units split seed trace
@@ -211,6 +219,7 @@ evalv() {  # variant port
   [ -d $E/traces_val_pass0 ] && $PY $P5/diag_closed_loop.py --traces $E/traces_val_pass0 --manifest $R/manifests/sanity_v1.json --out $E/closed_loop_val.json > /dev/null 2>&1
 }
 [ -f /dev/shm/lmm_runtime/sft/${TAG}A/DONE ] && evalv A 5620
+[ "$MODE" = full ] && [ ! -f $O/eval_BASE/val_pass1/summary.json ] && evalv BASE 5622 /dev/shm/lmm_runtime/sft/sanity_v1_balanced/best   # sanity_v1, same fp32 protocol
 [ -f /dev/shm/lmm_runtime/sft/${TAG}B/DONE ] && evalv B 5621
 $PY $P5/v2_compare.py --root $O --baseline $R/diag/sanity_v1 --out $O/v2_comparison.json > $O/v2_comparison.txt 2>&1
 cat $O/v2_comparison.txt

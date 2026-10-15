@@ -8,7 +8,13 @@ On K recorded frames with fixed seeds, action chunks from:
 plus the checkpoint's saved normalizer stats vs the dataset's exact stats and the input hash. Differences are
 reported as max and mean |a - b| / (q99 - q01) of each action dim (first H_exec steps and the full chunk).
 
-    python server_consistency.py --ckpt BEST --data DATASET_ROOT --out OUT.json [--k 16] [--port 5650]
+    python server_consistency.py --ckpt BEST --data TRAIN_DATASET_ROOT --out OUT.json [--k 16] [--port 5650]
+
+--data must be the run's TRAIN dataset: the checkpoint normalizes with train stats (val stats differ by design).
+Checkpoints with extra image inputs (v2 B history frames) get those keys filled with the head frame: the check
+is about path equality, not semantics. Verdict (pass): server == in-process at the same dtype (bit-exact),
+repeat runs identical, saved processor stats == the train exact stats (<= 1e-6), training-path processors
+reproduce the served actions (<= 1e-4 of range).
 """
 import argparse, hashlib, json, os, socket, subprocess, sys, time
 
@@ -20,7 +26,13 @@ from ovmm_model import IO  # noqa: E402
 from wire import recv_msg, send_msg  # noqa: E402
 
 
-def frames(root, k):
+def extra_image_keys(ckpt):
+    cfg = json.load(open(os.path.join(ckpt, "config.json")))
+    keys = [k.split(".")[-1] for k, v in cfg.get("input_features", {}).items() if k.startswith("observation.images.")]
+    return [k for k in keys if k not in IO.CAMERA_MAP]
+
+
+def frames(root, k, extra=()):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
     ds = LeRobotDataset(repo_id="local/consistency", root=root)
     idx = np.linspace(0, len(ds) - 1, k).astype(int)
@@ -30,6 +42,8 @@ def frames(root, k):
         reqs.append({"cmd": "infer", "images": {c: (it[f"observation.images.{c}"].permute(1, 2, 0).numpy() * 255).round().astype(np.uint8)
                                                 for c in IO.CAMERA_MAP},
                      "state": it["observation.state"].numpy().astype(np.float32), "task": it["task"], "seed": 7000 + int(i)})
+        for x in extra:
+            reqs[-1]["images"][x] = reqs[-1]["images"]["camera_top"]
     return reqs
 
 
@@ -65,8 +79,10 @@ def via_server(ckpt, dtype, reqs, port):
 def train_path(ckpt, data, reqs):
     """The training-time processors (dataset exact stats) instead of the checkpoint's saved processors."""
     import ovmm_model
+    from lerobot.configs.policies import PreTrainedConfig
     from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
-    cfg = ovmm_model.build_config(ckpt, device="cuda", dtype="float32", gradient_checkpointing=False)
+    cfg = PreTrainedConfig.from_pretrained(ckpt)                     # the checkpoint's own features (history keys)
+    cfg.compile_model, cfg.gradient_checkpointing, cfg.device, cfg.dtype = False, False, "cuda", "float32"
     meta = LeRobotDatasetMetadata("local/consistency", root=data)
     policy, pre, post = ovmm_model.build(cfg, ckpt, ckpt, meta.stats, device="cuda")
     policy.eval()
@@ -74,7 +90,7 @@ def train_path(ckpt, data, reqs):
     with torch.no_grad():
         for r in reqs:
             b = {"observation.state": torch.as_tensor(r["state"])[None], "task": [r["task"]]}
-            for c in IO.CAMERA_MAP:
+            for c in r["images"]:
                 b[f"observation.images.{c}"] = torch.as_tensor(r["images"][c])[None].permute(0, 3, 1, 2).float() / 255.0
             noise = torch.randn(cfg.chunk_size, cfg.max_action_dim, generator=torch.Generator().manual_seed(r["seed"]))[None].cuda()
             a = post(policy.predict_action_chunk(pre(b), noise=noise)).float().cpu().numpy()[0]
@@ -95,7 +111,7 @@ def main():
     a = ap.parse_args()
     stats = json.load(open(os.path.join(a.data, "meta", "stats.json")))
     rng = np.maximum(np.asarray(stats["action"]["q99"]) - np.asarray(stats["action"]["q01"]), 1e-6)
-    reqs = frames(a.data, a.k)
+    reqs = frames(a.data, a.k, extra_image_keys(a.ckpt))
     rep = {"ckpt": a.ckpt, "k": a.k,
            "input_sha256": hashlib.sha256(b"".join(r["state"].tobytes() + b"".join(r["images"][c].tobytes() for c in sorted(r["images"]))
                                                    for r in reqs)).hexdigest()[:16]}
@@ -121,6 +137,10 @@ def main():
     rep["action_scale"] = {k: round(float(np.abs(v).max()), 3) for k, v in A.items()}
     rep["action_range_violation_fp32"] = round(float(((A["in_fp32"] - np.asarray(stats["action"]["q01"])) / rng).min()), 3), \
         round(float(((A["in_fp32"] - np.asarray(stats["action"]["q99"])) / rng).max()), 3)
+    D = rep["diffs"]
+    rep["pass"] = bool(D["srv_fp32 vs in_fp32"]["max_chunk"] == 0.0 and D["in_fp32 vs in_fp32_again"]["max_chunk"] == 0.0
+                       and max(rep["saved_normalizer_vs_dataset_max_abs"].values()) <= 1e-6
+                       and D["train_path_fp32 vs in_fp32"]["max_chunk"] <= 1e-4)
     json.dump(rep, open(a.out, "w"), indent=1)
     print(json.dumps(rep, indent=1))
 

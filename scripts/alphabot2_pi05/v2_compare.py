@@ -36,14 +36,12 @@ def main():
     ap.add_argument("--baseline", required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    rep = {"sanity_v1": {"train_closed_loop": summ(os.path.join(a.baseline, "train_cl")),
-                         "train_nav": nav(os.path.join(a.baseline, "closed_loop.json")),
-                         "val_pass0": summ(os.path.join(EVAL, "pass0")), "val_pass1": summ(os.path.join(EVAL, "pass1"))}}
-    for v in ("A", "B"):
+    rep = {}
+    for v in ("BASE", "A", "B"):                                  # BASE = sanity_v1 re-evaluated under the same fp32 protocol
         E = os.path.join(a.root, f"eval_{v}")
         if not os.path.isdir(E):
             continue
-        rep[f"v2{v}"] = {"train_closed_loop": summ(os.path.join(E, "train_cl")), "train_nav": nav(os.path.join(E, "closed_loop_train.json")),
+        rep["sanity_v1(fp32)" if v == "BASE" else f"v2{v}"] = {"train_closed_loop": summ(os.path.join(E, "train_cl")), "train_nav": nav(os.path.join(E, "closed_loop_train.json")),
                          "val_pass0": summ(os.path.join(E, "val_pass0")), "val_pass1": summ(os.path.join(E, "val_pass1")),
                          "val_nav_pass0": nav(os.path.join(E, "closed_loop_val.json"))}
     json.dump(rep, open(a.out, "w"), indent=1)
