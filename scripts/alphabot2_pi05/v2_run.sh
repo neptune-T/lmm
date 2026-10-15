@@ -175,12 +175,13 @@ sft() {  # variant gpu
 }
 if [ "$MODE" = full ]; then
   echo "{\"release_gpus\": [$GPU_A, $GPU_B]}" > $R/collect_clean_v1/collect_control.json   # collection keeps GPU_EVAL
-  shm_free 140                                                    # A + B: 1 resumable checkpoint (~48 GB) + best each
+  shm_free 150                                                    # A + B: 1 resumable checkpoint (~48 GB) + best each + loader shm
   gpus_free $GPU_A $GPU_B
   sft A $GPU_A & PA=$!; sft B $GPU_B & PB=$!
   wait $PA; RA=$?; wait $PB; RB=$?
   echo '{"release_gpus": []}' > $R/collect_clean_v1/collect_control.json
 else
+  shm_free 90
   sft A $GPU_EVAL; RA=$?; sft B $GPU_EVAL; RB=$?
 fi
 ev sft_done "\"rc_A\": $RA, \"rc_B\": $RB"
@@ -206,7 +207,7 @@ evalv() {  # variant port [ckpt]
   local NW=5 MAXS=$([ "$MODE" = smoke ] && echo 300 || echo 3000)
   run() {  # name units split seed trace
     for w in $(seq 0 $((NW - 1))); do
-      EPISODES=$2 SPLIT=$3 PORT=$port OUT=$E/$1 GPU=$GPU_EVAL WORKER=$w NWORKERS=$NW EXEC_STEPS=5 SEED_OFFSET=$4 MAX_STEPS=$MAXS \
+      env EPISODES=$2 SPLIT=$3 PORT=$port OUT=$E/$1 GPU=$GPU_EVAL WORKER=$w NWORKERS=$NW EXEC_STEPS=5 SEED_OFFSET=$4 MAX_STEPS=$MAXS \
       HISTORY="$hist" ${5:+TRACE_DIR=$E/traces_$1 VIDEO_EVERY=3} bash $S/run_habitat.sh $S/eval_policy.py > $E/$1_w$w.log 2>&1 &
     done
     wait
@@ -219,7 +220,7 @@ evalv() {  # variant port [ckpt]
   [ -d $E/traces_val_pass0 ] && $PY $P5/diag_closed_loop.py --traces $E/traces_val_pass0 --manifest $R/manifests/sanity_v1.json --out $E/closed_loop_val.json > /dev/null 2>&1
 }
 [ -f /dev/shm/lmm_runtime/sft/${TAG}A/DONE ] && evalv A 5620
-[ "$MODE" = full ] && [ ! -f $O/eval_BASE/val_pass1/summary.json ] && evalv BASE 5622 /dev/shm/lmm_runtime/sft/sanity_v1_balanced/best   # sanity_v1, same fp32 protocol
+[ "$MODE" = full ] && [ ! -f $O/eval_BASE/val_pass1/summary.json ] && evalv BASE 5622 /workspace/runtime/sft_mirror/sanity_v1_balanced/best   # sanity_v1 (verified mirror), same fp32 protocol
 [ -f /dev/shm/lmm_runtime/sft/${TAG}B/DONE ] && evalv B 5621
 $PY $P5/v2_compare.py --root $O --baseline $R/diag/sanity_v1 --out $O/v2_comparison.json > $O/v2_comparison.txt 2>&1
 cat $O/v2_comparison.txt

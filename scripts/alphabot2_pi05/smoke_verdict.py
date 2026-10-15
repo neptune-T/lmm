@@ -39,7 +39,9 @@ def main():
     v["gates"] = {"pass": all(x["pass"] for x in g.values()), **g}
     sw = {}
     for w in ("1", "2", "4"):
-        d = f"{S}/v2smokesweep_w{w}"
+        d = f"{S}/v2smokesweep_w{w}"                    # removed from /dev/shm after the decision: use the mirror
+        if not os.path.isdir(d):
+            d = f"/workspace/runtime/sft_mirror/v2smokesweep_w{w}"
         e = {"sft_done": os.path.exists(f"{d}/DONE"), "finite": finite_log(d)}
         try:
             au = json.load(open(f"{R}/sweep/w{w}/audit.json"))
