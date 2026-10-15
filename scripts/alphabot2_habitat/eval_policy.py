@@ -46,7 +46,7 @@ CAM_MAP = IO.CAMERA_MAP                                       # the one interfac
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"),
           ("full", "ovmm_place_success"))
-# v2 B short history (ovmm_model.history): HISTORY='{"camera": "camera_top", "offsets": [5, 10, 15], "state": true}'.
+# v2 B short history (ovmm_model.history): HISTORY='{"camera": "camera_top", "offsets": [5, 10, 15], "state": false} (v2_run.sh passes sft_B.yaml history verbatim)'.
 # Past observations are those of earlier queries (queries every EXEC steps), so offsets must be multiples of
 # EXEC; before the episode start the first observation repeats (lerobot clamps the same way in training).
 HISTORY = json.loads(os.environ["HISTORY"]) if os.environ.get("HISTORY") else None

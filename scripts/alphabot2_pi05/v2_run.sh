@@ -200,7 +200,7 @@ VAL_UNITS=$(python3 -c "import json; print(','.join(json.load(open('$R/eval_spli
 if [ "$MODE" = smoke ]; then TRAIN_UNITS=$(echo $TRAIN_UNITS | cut -d, -f1); VAL_UNITS=""; fi
 evalv() {  # variant port [ckpt]
   local v=$1 port=$2 E=$O/eval_$1 ck=${3:-/dev/shm/lmm_runtime/sft/${TAG}$1/best} hist=""
-  [ "$v" = B ] && hist='{"camera": "camera_top", "offsets": [5, 10, 15], "state": true}'
+  [ "$v" = B ] && hist=$($PY -c "import json, yaml; print(json.dumps(yaml.safe_load(open('$O/sft_B.yaml'))['history']))")  # exactly B's training history (state: false)
   mkdir -p $E
   (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL setsid $PY policy_server.py --ckpt $ck --port $port --dtype float32 > $E/server.log 2>&1 &)
   for i in $(seq 120); do grep -q READY $E/server.log 2>/dev/null && break; sleep 10; done
