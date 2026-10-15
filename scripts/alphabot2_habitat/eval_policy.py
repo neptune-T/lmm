@@ -16,6 +16,11 @@ plus the hand that grasped (from the grasp action's events), steps, IK-invalid s
 per-scene breakdowns from eval_summary.py.
 
     EPISODES=... SPLIT=val PORT=5600 OUT=... run_habitat.sh eval_policy.py
+
+Diagnostics (TRACE_DIR set): per unit TRACE_DIR/<unit>.npz with the per-step base pose (x, z, yaw), the
+executed CartesianMobileAction18 (incl. v, omega), IK validity, the base-to-target-object distance
+(privileged; logged only, never sent to the policy) and, every VIDEO_EVERY steps, a downscaled
+[camera_top | camera_left | camera_right] frame strip. The policy's inputs are unchanged.
 """
 import json, os, socket, sys, time, traceback
 
@@ -27,6 +32,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts", "alphabot2_pi05"))
 from lmm.embodiments.alphabot2 import cartesian as C  # noqa: E402
 from lmm.embodiments.alphabot2 import ovmm_policy_io as IO  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
+from lmm.embodiments.alphabot2.habitat import nav as NAV  # noqa: E402
 from wire import recv_msg, send_msg  # noqa: E402
 
 OUT = os.environ["OUT"]
@@ -40,6 +46,10 @@ CAM_MAP = IO.CAMERA_MAP                                       # the one interfac
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"),
           ("full", "ovmm_place_success"))
+TRACE_DIR = os.environ.get("TRACE_DIR")
+VIDEO_EVERY = int(os.environ.get("VIDEO_EVERY", "0"))
+if TRACE_DIR:
+    os.makedirs(TRACE_DIR, exist_ok=True)
 units = [u for u in os.environ["EPISODES"].replace("\n", ",").split(",") if u][WK::NW]
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=SPLIT)
 sock = socket.create_connection(("127.0.0.1", int(os.environ.get("PORT", "5600"))))
@@ -88,9 +98,17 @@ for unit in units:
         ex = C.CartesianExecutor.from_proprio(rob.proprio16())
         steps = ik_invalid = 0
         chunk, k = None, EXEC
+        tr = {"pose": [], "act": [], "ik": [], "dist": [], "frames": [], "frame_steps": []}
+        if TRACE_DIR:
+            sim = env.sim
+            tgt = sim.get_rigid_object_manager().get_object_by_id(sim.scene_obj_ids[int(sim.get_targets()[0][0])])
         while steps < MAX_STEPS and not env.episode_over:
             if k >= EXEC:
-                send_msg(sock, {"cmd": "infer", "images": observe(), "task": rec["instruction"],
+                imgs = observe()
+                if TRACE_DIR and VIDEO_EVERY and steps % VIDEO_EVERY == 0:
+                    tr["frames"].append(np.concatenate([imgs[c][::2, ::2] for c in ("camera_top", "camera_left", "camera_right")], 1))
+                    tr["frame_steps"].append(steps)
+                send_msg(sock, {"cmd": "infer", "images": imgs, "task": rec["instruction"],
                                 "state": IO.state_from_proprio(rob.proprio16()).astype(np.float32),
                                 "seed": int(HE.episode_seed(ep_id, rep)) + 1_000_003 * SEED_OFFSET + steps})
                 r = recv_msg(sock)
@@ -98,13 +116,29 @@ for unit in units:
                     raise RuntimeError("policy server: " + r["error"])
                 chunk, k = r["actions"], 0
             joint, rep_ik = ex.lower(chunk[k])
-            ik_invalid += int(not (rep_ik["left"]["ik_valid"] and rep_ik["right"]["ik_valid"]))
+            ik_ok = bool(rep_ik["left"]["ik_valid"] and rep_ik["right"]["ik_valid"])
+            ik_invalid += int(not ik_ok)
+            if TRACE_DIR:
+                xz, yaw, _ = NAV.pose2d(env)
+                tp = np.array(tgt.translation)
+                tr["pose"].append([float(xz[0]), float(xz[1]), float(yaw)])
+                tr["act"].append(np.asarray(chunk[k], np.float32))
+                tr["ik"].append(ik_ok)
+                tr["dist"].append(float(np.hypot(tp[0] - xz[0], tp[2] - xz[1])))
             HE.step18(env, joint)
             steps, k = steps + 1, k + 1
         grasps = [e for e in HE.action_obj(env).events if e.get("type") == "grasp"]
         rec.update({"steps": steps, "ik_invalid_steps": ik_invalid, "episode_over": bool(env.episode_over),
                     "hand": grasps[0]["hand"] if grasps else None, "n_grasps": len(grasps), "ovmm": metrics()})
         rec["funnel"] = {name: rec["ovmm"][k_] for name, k_ in FUNNEL}
+        if TRACE_DIR:
+            np.savez_compressed(os.path.join("/dev/shm", f"trace_{unit.replace('#', '_r')}.npz"),
+                                pose=np.asarray(tr["pose"], np.float32), act=np.asarray(tr["act"], np.float32),
+                                ik=np.asarray(tr["ik"]), dist=np.asarray(tr["dist"], np.float32),
+                                frames=np.asarray(tr["frames"], np.uint8).reshape(-1, 120, 480, 3),
+                                frame_steps=np.asarray(tr["frame_steps"]), funnel=json.dumps(rec["funnel"]))
+            import shutil                                     # bosfs rejects seeks while writing: build in /dev/shm
+            shutil.copy(os.path.join("/dev/shm", f"trace_{unit.replace('#', '_r')}.npz"), TRACE_DIR)
     except Exception as e:
         rec["engineering_error"] = repr(e)[:300]
         rec["tb"] = traceback.format_exc()[-1200:]
