@@ -84,7 +84,11 @@ def train_path(ckpt, data, reqs):
     cfg = PreTrainedConfig.from_pretrained(ckpt)                     # the checkpoint's own features (history keys)
     cfg.compile_model, cfg.gradient_checkpointing, cfg.device, cfg.dtype = False, False, "cuda", "float32"
     meta = LeRobotDatasetMetadata("local/consistency", root=data)
-    policy, pre, post = ovmm_model.build(cfg, ckpt, ckpt, meta.stats, device="cuda")
+    # float32 like the processor buffers the checkpoint saved: pi0.5 discretizes the normalized state into 256
+    # prompt bins, so float64-vs-float32 stats (~1e-8) can flip a bin near an edge and move the actions
+    stats = {k: {kk: (np.asarray(vv, dtype=np.float32) if np.asarray(vv).dtype.kind == "f" else vv) for kk, vv in d.items()}
+             for k, d in meta.stats.items()}
+    policy, pre, post = ovmm_model.build(cfg, ckpt, ckpt, stats, device="cuda")
     policy.eval()
     out = []
     with torch.no_grad():
