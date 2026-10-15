@@ -99,11 +99,12 @@ def main():
             if ref is not None and j < 32:
                 ra, _ = ref.infer_batch([req])
                 SRV_REF.append(float(np.abs(ra[0][: a.h_exec] - pa[: a.h_exec]).max() / rng_.max()))
-            P.append(pa[: a.h_exec])
-            E.append(it["action"].numpy()[: a.h_exec])
-            PAD.append(it["action_is_pad"].numpy()[: a.h_exec])
+            P.append(pa)                                         # full 50-step chunks (metrics use the first h_exec)
+            E.append(it["action"].numpy())
+            PAD.append(it["action_is_pad"].numpy())
             NAVF.append(bool(nav[int(i)]))
-        P, E, PAD, NAVF = np.asarray(P), np.asarray(E), np.asarray(PAD, bool), np.asarray(NAVF)
+        PF, EF, PADF, NAVF = np.asarray(P), np.asarray(E), np.asarray(PAD, bool), np.asarray(NAVF)
+        P, E, PAD = PF[:, : a.h_exec], EF[:, : a.h_exec], PADF[:, : a.h_exec]
         m = ~PAD
         err = np.abs(P - E)[m]                                   # (N, 18)
         base = np.abs(mean[None] - E[m])
@@ -128,10 +129,19 @@ def main():
             gv["stall_rate_expert_v_gt_0.1_policy_v_lt_0.05"] = round(float(((ev > 0.1) & (pv < 0.05)).sum() / max(1, (ev > 0.1).sum())), 3)
             for d, name in ((14, "left_gripper"), (15, "right_gripper")):
                 gv[f"{name}_cmd_agree"] = round(float(((P[..., d][mm] > 0.5) == (E[..., d][mm] > 0.5)).mean()), 3)
+            # dithering proxy: omega sign flips (|omega| > 0.05 steps) over the whole valid 50-step chunk
+            def flips(seq):
+                s_ = np.sign(seq[np.abs(seq) > 0.05])
+                return int((s_[1:] != s_[:-1]).sum()) if len(s_) > 1 else 0
+            fp = [flips(PF[k, ~PADF[k], 17]) for k in np.flatnonzero(sel)]
+            fe = [flips(EF[k, ~PADF[k], 17]) for k in np.flatnonzero(sel)]
+            gv["omega_chunk_flips_mean_pred"] = round(float(np.mean(fp)), 3) if fp else None
+            gv["omega_chunk_flips_mean_expert"] = round(float(np.mean(fe)), 3) if fe else None
+            gv["dither_ratio"] = round(float(np.mean(fp) / max(np.mean(fe), 0.05)), 3) if fp else None
             out[g] = gv
         rep[split] = out
         if a.save_npz:
-            np.savez(f"{a.save_npz}_{split}.npz", idx=np.asarray(idx), P=P, E=E, PAD=PAD, NAV=NAVF)
+            np.savez(f"{a.save_npz}_{split}.npz", idx=np.asarray(idx), P=PF, E=EF, PAD=PADF, NAV=NAVF)
         print(split, json.dumps({k: out[k] for k in ("frames", "server_vs_fp32_ref_max_norm")}), json.dumps(out["navigation"]), flush=True)
     json.dump(rep, open(a.out, "w"), indent=1)
     print("###AUDIT###" + json.dumps({"normalizer": rep["normalizer_vs_dataset_max_abs"]}), flush=True)
@@ -155,7 +165,7 @@ def stratify(npz, ds_root):
         sel = t["NAV"] & (left[t["idx"]] >= lo) & (left[t["idx"]] < hi)
         if sel.sum() < 5:
             continue
-        P, E, m = t["P"][sel], t["E"][sel], ~t["PAD"][sel]
+        P, E, m = t["P"][sel][:, :5], t["E"][sel][:, :5], ~t["PAD"][sel][:, :5]          # the executed H_exec steps
         pw, ew = P[..., 17][m], E[..., 17][m]
         big = np.abs(ew) > 0.05
         out[f"{lo}-{hi}"] = {"frames": int(sel.sum()), "omega_sign_agree": round(float((np.sign(pw[big]) == np.sign(ew[big])).mean()), 3) if big.any() else None,
