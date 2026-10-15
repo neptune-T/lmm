@@ -16,6 +16,19 @@ export PI05_CKPT=/workspace/runtime/pi05/ckpt PI05_SPM=/workspace/runtime/pi05/p
        LMM_REPO=/workspace/lmm PYTHONUNBUFFERED=1 HF_HOME=$Y/envs/_hf_home
 ev() { echo "{\"time\": \"$(date '+%F %T')\", \"event\": \"$1\", \"mode\": \"$MODE\"${2:+, $2}}" | tee -a $O/events.jsonl; }
 accepted() { python3 -c "import json; print(json.load(open('$R/collect_clean_v1/supervisor_status.json'))['accepted'])"; }
+gpus_free() {  # wait until every listed GPU is out of collection and empty (training never shares memory)
+  for i in $(seq 90); do
+    local busy=0
+    for g in "$@"; do
+      local used=$(nvidia-smi -i $g --query-gpu=memory.used --format=csv,noheader,nounits | tr -d " ")
+      local apps=$(nvidia-smi -i $g --query-compute-apps=pid --format=csv,noheader | wc -l)
+      [ "$used" -gt 2000 ] || [ "$apps" -gt 0 ] && busy=1
+    done
+    [ $busy -eq 0 ] && { ev gpus_free "\"gpus\": \"$*\""; return 0; }
+    sleep 10
+  done
+  ev BLOCKED "\"gate\": \"GPU_NOT_FREE\", \"gpus\": \"$*\""; exit 1
+}
 
 if [ "$MODE" = smoke ]; then                                        # smoke trains on GPU_EVAL: free it from collection
   echo "{\"release_gpus\": [$GPU_EVAL]}" > $R/collect_clean_v1/collect_control.json
@@ -97,7 +110,8 @@ PY
     done
   }
   if [ "$MODE" = full ]; then
-    echo "{\"release_gpus\": [$GPU_A, $GPU_B, $GPU_EVAL]}" > $R/collect_clean_v1/collect_control.json; sleep 200
+    echo "{\"release_gpus\": [$GPU_A, $GPU_B, $GPU_EVAL]}" > $R/collect_clean_v1/collect_control.json
+    gpus_free $GPU_A $GPU_B $GPU_EVAL
     sweep_one 1 $GPU_A & sweep_one 2 $GPU_B & sweep_one 4 $GPU_EVAL & wait
     echo "{\"release_gpus\": [$GPU_A, $GPU_B]}" > $R/collect_clean_v1/collect_control.json
   else
@@ -130,6 +144,16 @@ c["loss"] = json.load(open(sys.argv[2]))["loss"]
 yaml.safe_dump(c, open(sys.argv[1], "w"), sort_keys=False)
 PY
 done
+# A and B must be the same run except the short visual history (same data, checkpoint, split, seed, sampler, loss)
+$PY - "$O/sft_A.yaml" "$O/sft_B.yaml" > $O/ab_config_diff.txt <<'PY' || { ev BLOCKED "\"gate\": \"AB_CONFIG\""; exit 1; }
+import sys, yaml
+a, b = (yaml.safe_load(open(f)) for f in sys.argv[1:3])
+diff = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+print("A/B config keys that differ:", diff)
+print("B history:", b.get("history"), "| A history:", a.get("history"))
+sys.exit(0 if set(diff) <= {"name", "out", "history"} and not a.get("history") and b.get("history") and not b["history"].get("state") else 1)
+PY
+cat $O/ab_config_diff.txt
 
 # ---------------------------------------------------------------- 4. SFT A and B (same budget), resumable
 sft() {  # variant gpu
@@ -144,7 +168,7 @@ sft() {  # variant gpu
 }
 if [ "$MODE" = full ]; then
   echo "{\"release_gpus\": [$GPU_A, $GPU_B]}" > $R/collect_clean_v1/collect_control.json   # collection keeps GPU_EVAL
-  sleep 200
+  gpus_free $GPU_A $GPU_B
   sft A $GPU_A & PA=$!; sft B $GPU_B & PB=$!
   wait $PA; RA=$?; wait $PB; RB=$?
   echo '{"release_gpus": []}' > $R/collect_clean_v1/collect_control.json
