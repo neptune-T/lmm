@@ -166,6 +166,7 @@ def main():
 
     # ---------------- D: horizon
     ok["D_horizons"] = cfg.chunk_size == IO.H_PRED and 1 <= args.h_exec <= cfg.chunk_size
+    ok["D_state_within_pi05_contract"] = ovmm_model.state_dim(hist) <= int(getattr(cfg, "max_state_dim", 32))
     rep["D"] = {"h_pred": cfg.chunk_size, "h_exec": args.h_exec, "n_action_steps_recorded": cfg.n_action_steps,
                 "num_inference_steps": getattr(cfg, "num_inference_steps", None)}
 
@@ -178,6 +179,19 @@ def main():
     pb = pre(dict(batch))
     a_rt = post(pb["action"].clone()).float().cpu()
     ok["C_normalize_round_trip"] = float((a_rt - batch["action"].float()).abs().max()) <= 1e-3 * float(rngs.max())
+    # prompt budget: pi0.5 writes the discretized state into the prompt ("Task: ..., State: b1 b2 ...;\nAction: ")
+    # and truncates at tokenizer_max_length -- worst case = the longest instruction with every state bin at 255
+    from lerobot.utils.constants import OBS_LANGUAGE_ATTENTION_MASK as _M
+    tasks = list(meta.tasks.index) if hasattr(meta.tasks, "index") else list(meta.tasks)
+    longest = max(tasks, key=len)
+    wb = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in batch.items()}
+    wb["observation.state"] = torch.full_like(batch["observation.state"], 1e6)     # normalizes to the top bin
+    wb["task"] = [longest]
+    ntok = int(pre(dict(wb))[_M].sum())
+    lim = int(getattr(cfg, "tokenizer_max_length", 200))
+    ok["D_prompt_within_tokenizer_limit"] = ntok < lim - 8
+    rep["D_prompt"] = {"worst_case_tokens": ntok, "tokenizer_max_length": lim, "longest_task": longest,
+                       "state_dim": ovmm_model.state_dim(hist), "max_state_dim": int(getattr(cfg, "max_state_dim", 32))}
     def seeded_loss():
         b = pre(dict(batch))
         torch.manual_seed(1234)                       # forward() draws its own noise/time from the global RNG

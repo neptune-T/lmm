@@ -1,4 +1,6 @@
-# v2B: current pi0.5 architecture + 4-frame short history (head camera t-5/t-10/t-15 as extra images, 64-D stacked state)
+# v2B: current pi0.5 architecture + 4-frame short history: head camera t-5/t-10/t-15 as extra images; state stays the
+# current 16-D (pi0.5 writes the state into the prompt, max_state_dim 32, tokenizer 200 -- a 64-D stack breaks the contract;
+# past proprio is the arm tuck during navigation anyway)
 # + all accepted v2 trajectories (frozen manifest v2) + nav omega class balance (turns were already oversampled 2.3x in sanity_v1)
 # + steering loss (omega x4 in the flow loss; smooth-L1 on the one-step denoised v/omega, first 10 chunk steps).
 # Same budget for A and B: 1 GPU, batch 16, 10k steps; selection by plain masked VAL flow loss. No map / semantic controller / RL.
@@ -68,4 +70,4 @@ history:
   - 5
   - 10
   - 15
-  state: true
+  state: false
