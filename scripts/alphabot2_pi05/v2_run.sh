@@ -16,6 +16,10 @@ export PI05_CKPT=/workspace/runtime/pi05/ckpt PI05_SPM=/workspace/runtime/pi05/p
        LMM_REPO=/workspace/lmm PYTHONUNBUFFERED=1 HF_HOME=$Y/envs/_hf_home
 ev() { echo "{\"time\": \"$(date '+%F %T')\", \"event\": \"$1\", \"mode\": \"$MODE\"${2:+, $2}}" | tee -a $O/events.jsonl; }
 accepted() { python3 -c "import json; print(json.load(open('$R/collect_clean_v1/supervisor_status.json'))['accepted'])"; }
+shm_free() {  # need_gb: training writes checkpoints to /dev/shm (224 GB tmpfs, shared with the Habitat env)
+  local free=$(df -BG --output=avail /dev/shm | tail -1 | tr -dc 0-9)
+  [ "$free" -ge "$1" ] || { ev BLOCKED "\"gate\": \"SHM_SPACE\", \"free_gb\": $free, \"need_gb\": $1"; exit 1; }
+}
 gpus_free() {  # wait until every listed GPU is out of collection and empty (training never shares memory)
   for i in $(seq 90); do
     local busy=0
@@ -98,10 +102,12 @@ c["loss"] = {"dim_weights": {"base.omega": w}, "steer_aux": {"weight": w / 4, "s
 c["steps"] = 20 if mode == "smoke" else 2000
 c["val_every"] = c["ckpt_every"] = 10 if mode == "smoke" else 500
 c["out"] = f"/dev/shm/lmm_runtime/sft/{tag}sweep_w{w:g}"
+c["resumable"], c["save_last"] = False, False                    # /dev/shm budget: sweeps keep only best
 c["name"] = f"sft_{tag}sweep_w{w:g}"
 yaml.safe_dump(c, open(dst, "w"), sort_keys=False)
 PY
   done
+  shm_free $([ "$MODE" = smoke ] && echo 20 || echo 60)            # 3 x best (16 GB)
   sweep_one() {  # w gpu
     local out=/dev/shm/lmm_runtime/sft/${TAG}sweep_w$1
     for attempt in 1 2 3; do
@@ -135,6 +141,7 @@ PY
   python3 $P5/sweep_decide.py --root $SW --weights 1 2 4 --out $SW/decision.json | tail -40
   [ -f $SW/decision.json ] || { ev BLOCKED "\"gate\": \"SWEEP\""; exit 1; }
   ev sweep_done "\"chosen_w\": $(python3 -c "import json; print(json.load(open('$SW/decision.json'))['chosen_w'])")"
+  rm -rf /dev/shm/lmm_runtime/sft/${TAG}sweep_w*                 # metrics + decision are on /workspace
 fi
 for v in A B; do                                                  # the chosen steering loss for both variants
   $PY - "$O/sft_$v.yaml" "$SW/decision.json" <<'PY'
@@ -168,6 +175,7 @@ sft() {  # variant gpu
 }
 if [ "$MODE" = full ]; then
   echo "{\"release_gpus\": [$GPU_A, $GPU_B]}" > $R/collect_clean_v1/collect_control.json   # collection keeps GPU_EVAL
+  shm_free 140                                                    # A + B: 1 resumable checkpoint (~48 GB) + best each
   gpus_free $GPU_A $GPU_B
   sft A $GPU_A & PA=$!; sft B $GPU_B & PB=$!
   wait $PA; RA=$?; wait $PB; RB=$?

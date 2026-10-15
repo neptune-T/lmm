@@ -247,10 +247,11 @@ def main():
                 b = torch.tensor([best[0], best[1]], dtype=torch.double, device=dev)
                 dist.broadcast(b, 0)
                 best = (float(b[0]), int(b[1]))
-        if step % int(C["ckpt_every"]) == 0 or step == steps:
-            checkpoint(step)
+        if C.get("resumable", True) and (step % int(C["ckpt_every"]) == 0 or step == steps):
+            checkpoint(step)                                              # resumable=false (short sweeps): best only
     if rank == 0:
-        save_policy(out / "last")
+        if C.get("save_last", True):
+            save_policy(out / "last")
         seen = seen0 + (steps - start) * gb
         summary = {"best_val_loss": best[0], "best_step": best[1], "steps": steps, "world": world,
                    "global_batch": gb, "grad_accum": accum, "samples_seen": seen,

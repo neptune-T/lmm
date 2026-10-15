@@ -30,6 +30,7 @@ gradient_checkpointing: true
 val_every: 1000
 ckpt_every: 1000
 keep_ckpts: 1
+save_last: false
 num_workers: 10
 seed: 1000
 sampling:
