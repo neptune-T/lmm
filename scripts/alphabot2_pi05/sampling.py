@@ -9,6 +9,10 @@ phase_balanced (frame_meta.npz from ovmm_to_lerobot.py):
     non-navigation stage (approach -> reach, lift/carry -> navigate, navigate -> reach_place);
   * arm_balance: each arm's episodes get equal total weight;
   * scene_balance: each scene's total weight scaled by (mean scene mass / scene mass) ** scene_power.
+  * nav_omega_balance (optional): within navigation frames, the anchor's omega class (left / straight /
+    right at |omega| 0.05) gets equal total weight, navigation mass unchanged -- replaces the implicit
+    turn oversampling of the cruise downweight (sanity_v1 sampled 35 / 26 / 38 % with straight
+    under-taught); turn_weight (optional) multiplies turning navigation frames afterwards.
 uniform: w = 1 (baseline config).
 Weights are normalized to mean 1.
 """
@@ -69,8 +73,23 @@ def weights(frame_meta: dict, cfg: dict) -> tuple[np.ndarray, dict]:
         mean = np.mean(list(mass.values()))
         for s, ms in mass.items():
             w[scene == s] *= (mean / ms) ** p
+    nav_om = {}
+    if cfg.get("nav_omega_balance") or cfg.get("turn_weight"):
+        om = np.asarray(frame_meta["omega"])
+        oc = np.where(om > 0.05, 0, np.where(om < -0.05, 2, 1))           # 0 left, 1 straight, 2 right
+        if cfg.get("nav_omega_balance"):
+            tot = w[is_nav].sum()
+            for c in range(3):
+                m = is_nav & (oc == c)
+                if m.any():
+                    w[m] *= (tot / 3) / w[m].sum()
+        tw = float(cfg.get("turn_weight", 1.0))
+        if tw != 1.0:
+            w[is_nav & (oc != 1)] *= tw
+        nav_om = {k: float(w[is_nav & (oc == c)].sum() / max(1e-12, w[is_nav].sum())) for c, k in enumerate(("left", "straight", "right"))}
     w = w / w.mean()
     info = {"mode": cfg.get("mode"), "frames": int(n), "cruise_fraction": float(cruise.mean()),
+            "nav_omega_class_mass": nav_om,
             "transition_fraction": float((d_navx <= win).mean()),
             "effective_mass_by_stage": {names[s]: float(w[st == s].sum() / w.sum()) for s in np.unique(st)},
             "frame_share_by_stage": {names[s]: float((st == s).mean()) for s in np.unique(st)},

@@ -109,10 +109,16 @@ def main():
     ap.add_argument("--supervisor-log", default=None, help="collection supervisor log (worker start times)")
     ap.add_argument("--extra-start", action="append", default=[],
                     help="'W1,W2@YYYY-mm-dd HH:MM:SS' start of workers not launched by the supervisor (e.g. the clean pilot)")
+    ap.add_argument("--exclude-episodes", default=None,
+                    help="file with OVMM episode ids (or units) kept out of the round, e.g. the H_exec calibration set")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
     rows = accepted(a.src)
+    excluded = set()
+    if a.exclude_episodes:
+        excluded = {x.split("#")[0] for x in open(a.exclude_episodes).read().replace(",", "\n").split()}
+        rows = {u: r for u, r in rows.items() if str(r.get("episode") or u.split("#")[0]) not in excluded}
     starts, hist = worker_starts(a.supervisor_log), head_history()
     for x in a.extra_start:
         ws, _, ts = x.partition("@")
@@ -171,6 +177,7 @@ def main():
          "split_rule": f"crc32('sft-split:<episode>') % 1000 < {a.val_permille} -> val (whole episodes)",
          "train_rule": f"train-split snapshot sorted by unit id, first {a.max_train or 'all'}",
          "train": train, "val": val, "n_train": len(train), "n_val": len(val),
+         "excluded_episodes": sorted(excluded), "exclude_source": a.exclude_episodes,
          "train_sha256": sha(train), "val_sha256": sha(val),
          "train_detail": [details[u] for u in train], "val_detail": [details[u] for u in val],
          "provenance_sources": sorted({d["code_commit_from"].split()[0] for d in details.values()}),

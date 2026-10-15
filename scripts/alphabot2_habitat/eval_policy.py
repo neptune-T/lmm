@@ -46,6 +46,12 @@ CAM_MAP = IO.CAMERA_MAP                                       # the one interfac
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"),
           ("full", "ovmm_place_success"))
+# v2 B short history (ovmm_model.history): HISTORY='{"camera": "camera_top", "offsets": [5, 10, 15], "state": true}'.
+# Past observations are those of earlier queries (queries every EXEC steps), so offsets must be multiples of
+# EXEC; before the episode start the first observation repeats (lerobot clamps the same way in training).
+HISTORY = json.loads(os.environ["HISTORY"]) if os.environ.get("HISTORY") else None
+if HISTORY:
+    assert all(k % EXEC == 0 for k in HISTORY["offsets"]), f"history offsets {HISTORY['offsets']} not multiples of H_exec {EXEC}"
 TRACE_DIR = os.environ.get("TRACE_DIR")
 VIDEO_EVERY = int(os.environ.get("VIDEO_EVERY", "0"))
 if TRACE_DIR:
@@ -55,7 +61,8 @@ env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=SPLIT)
 sock = socket.create_connection(("127.0.0.1", int(os.environ.get("PORT", "5600"))))
 send_msg(sock, {"cmd": "ping"})
 srv = recv_msg(sock)
-assert set(srv.get("cams", [])) == set(CAM_MAP), f"server cameras {srv.get('cams')} != {sorted(CAM_MAP)}"
+_hk = {f"{HISTORY['camera']}_h{k}" for k in HISTORY["offsets"]} if HISTORY else set()
+assert set(srv.get("cams", [])) == set(CAM_MAP) | _hk, f"server cameras {srv.get('cams')} != {sorted(set(CAM_MAP) | _hk)}"
 assert 1 <= EXEC <= IO.H_PRED, f"H_exec {EXEC} outside 1..{IO.H_PRED}"
 
 
@@ -99,6 +106,7 @@ for unit in units:
         steps = ik_invalid = 0
         chunk, k = None, EXEC
         tr = {"pose": [], "act": [], "ik": [], "dist": [], "frames": [], "frame_steps": []}
+        past = []                                               # (image of HISTORY camera, state) per earlier query
         if TRACE_DIR:
             sim = env.sim
             tgt = sim.get_rigid_object_manager().get_object_by_id(sim.scene_obj_ids[int(sim.get_targets()[0][0])])
@@ -108,8 +116,21 @@ for unit in units:
                 if TRACE_DIR and VIDEO_EVERY and steps % VIDEO_EVERY == 0:
                     tr["frames"].append(np.concatenate([imgs[c][::2, ::2] for c in ("camera_top", "camera_left", "camera_right")], 1))
                     tr["frame_steps"].append(steps)
+                st16 = IO.state_from_proprio(rob.proprio16()).astype(np.float32)
+                state_in = st16
+                if HISTORY:
+                    cam = HISTORY["camera"]
+                    hist_obs = []
+                    for k in HISTORY["offsets"]:
+                        j = k // EXEC
+                        hist_obs.append(past[-j] if len(past) >= j else (past[0] if past else (imgs[cam], st16)))
+                    for k, (im_k, _) in zip(HISTORY["offsets"], hist_obs):
+                        imgs[f"{cam}_h{k}"] = im_k
+                    if HISTORY.get("state"):
+                        state_in = np.concatenate([st16] + [s_k for _, s_k in hist_obs]).astype(np.float32)
+                    past.append((imgs[cam], st16))
                 send_msg(sock, {"cmd": "infer", "images": imgs, "task": rec["instruction"],
-                                "state": IO.state_from_proprio(rob.proprio16()).astype(np.float32),
+                                "state": state_in,
                                 "seed": int(HE.episode_seed(ep_id, rep)) + 1_000_003 * SEED_OFFSET + steps})
                 r = recv_msg(sock)
                 if "error" in r:

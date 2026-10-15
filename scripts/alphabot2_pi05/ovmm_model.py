@@ -24,11 +24,64 @@ from lerobot.policies.pi05.modeling_pi05 import PI05Policy  # noqa: E402
 CAMERAS = tuple(c for c in IO.MODEL_CAMERA_ORDER if c in IO.CAMERA_MAP)          # camera_left, camera_right, camera_top
 
 
-def build_config(init_ckpt, device="cuda", dtype="float32", gradient_checkpointing=True, h_exec=None):
+# --------------------------------------------------------------------------- short observation history (v2 B)
+# history = {"camera": "camera_top", "offsets": [5, 10, 15], "state": true}: the past head-camera frames
+# at t-5, t-10, t-15 (10 Hz; 0.5 s apart) become extra image inputs camera_top_h5, ... (appended after the
+# pretrained cameras) and, with state, the policy state becomes [s_t, s_{t-5}, s_{t-10}, s_{t-15}] (16 x 4).
+# Steps before the episode start repeat frame 0 (lerobot clamps; the eval client pads the same way).
+def history_keys(hist):
+    return [f"{hist['camera']}_h{k}" for k in hist["offsets"]] if hist else []
+
+
+def state_dim(hist):
+    return 16 * (1 + len(hist["offsets"])) if hist and hist.get("state") else 16
+
+
+def history_delta_timestamps(dts, hist, fps=10):
+    """Add the history offsets (seconds, oldest first, current last) to lerobot delta timestamps."""
+    if not hist:
+        return dts
+    ts = [-k / fps for k in sorted(hist["offsets"], reverse=True)] + [0.0]
+    dts = dict(dts or {})
+    dts[f"observation.images.{hist['camera']}"] = ts
+    if hist.get("state"):
+        dts["observation.state"] = ts
+    return dts
+
+
+def apply_history(batch, hist):
+    """Stacked history tensors (B, T, ...) from the dataset -> the policy's per-key inputs (in place)."""
+    if not hist:
+        return batch
+    offs = sorted(hist["offsets"], reverse=True)                  # stacked order: oldest ... current
+    key = f"observation.images.{hist['camera']}"
+    x = batch[key]
+    batch[key] = x[:, -1]
+    for i, k in enumerate(offs):
+        batch[f"observation.images.{hist['camera']}_h{k}"] = x[:, i]
+    if hist.get("state"):
+        s = batch["observation.state"]                             # (B, T, 16)
+        # [s_t, s_{t-5}, s_{t-10}, ...]: current first, then increasingly older
+        batch["observation.state"] = torch.cat([s[:, -1]] + [s[:, len(offs) - 1 - j] for j in range(len(offs))], -1)
+    return batch
+
+
+def history_stats(stats, hist):
+    """Normalization stats for the history state (each 16-D block uses the current-state stats)."""
+    if not hist or not hist.get("state"):
+        return stats
+    import numpy as np
+    out = dict(stats)
+    out["observation.state"] = {k: (np.tile(np.asarray(v), 1 + len(hist["offsets"])) if k != "count" else v)
+                                for k, v in stats["observation.state"].items()}
+    return out
+
+
+def build_config(init_ckpt, device="cuda", dtype="float32", gradient_checkpointing=True, h_exec=None, history=None):
     cfg = PreTrainedConfig.from_pretrained(init_ckpt)
-    cfg.input_features = {"observation.state": PolicyFeature(type=FeatureType.STATE, shape=(16,)),
+    cfg.input_features = {"observation.state": PolicyFeature(type=FeatureType.STATE, shape=(state_dim(history),)),
                           **{f"observation.images.{c}": PolicyFeature(type=FeatureType.VISUAL, shape=(3, *IO.IMAGE_SHAPE[:2]))
-                             for c in CAMERAS}}
+                             for c in list(CAMERAS) + history_keys(history)}}
     cfg.output_features = {"action": PolicyFeature(type=FeatureType.ACTION, shape=(len(IO.ACTION_LABELS),))}
     cfg.empty_cameras = 0
     cfg.compile_model = False
@@ -106,7 +159,7 @@ def suffix_forward(model, images, img_masks, tokens, masks, actions, noise, time
     return F.mse_loss(u_t, v_t, reduction="none"), v_t
 
 
-def flow_losses(policy, batch, action_is_pad=None, noise=None, time=None, return_v=False):
+def flow_losses(policy, batch, action_is_pad=None, noise=None, time=None, return_v=False, return_aux=False):
     """Per-(chunk step, action dim) flow-matching losses with padded action tokens masked out of attention.
     noise/time default to the policy's own samplers (as PI05Policy.forward draws them)."""
     images, img_masks = policy._preprocess_images(batch)
@@ -119,6 +172,10 @@ def flow_losses(policy, batch, action_is_pad=None, noise=None, time=None, return
     valid = None if action_is_pad is None else ~action_is_pad.to(actions.device).bool()
     losses, v_t = suffix_forward(policy.model, images, img_masks, tokens, masks, actions, noise, time, valid)
     d = policy.config.output_features["action"].shape[0]
+    if return_aux:                                     # one-step denoised estimate x0_hat = x_t - t * v_t
+        t = time[:, None, None]
+        x_t = t * noise + (1 - t) * actions
+        return losses[:, :, :d], {"x0_hat": (x_t - t * v_t)[:, :, :d], "actions": actions[:, :, :d]}
     return (losses[:, :, :d], v_t[:, :, :d]) if return_v else losses[:, :, :d]
 
 
@@ -137,6 +194,39 @@ def reduce_masked(losses, action_is_pad=None):
                   "valid_target_fraction": float(valid.mean())}
 
 
+def configured_loss(policy, batch, action_is_pad, loss_cfg, noise=None, time=None):
+    """SFT loss with the v2 steering terms (loss_cfg from the run yaml; None = masked_loss exactly):
+      dim_weights   {action label: weight} in the masked flow-matching mean (others 1), normalized by the sum
+      steer_aux     {weight, steps, dims}: smooth-L1 between the one-step denoised estimate x0_hat and the
+                    normalized target on those dims over the first `steps` chunk steps, padded steps excluded
+    Padded steps keep weight exactly 0 in every term; padded tokens stay masked out of attention."""
+    if not loss_cfg:
+        return masked_loss(policy, batch, action_is_pad)
+    losses, aux = flow_losses(policy, batch, action_is_pad, noise=noise, time=time, return_aux=True)
+    d = losses.shape[-1]
+    valid = (~action_is_pad.to(losses.device).bool()).float() if action_is_pad is not None else torch.ones(losses.shape[:2], device=losses.device)
+    wd = torch.ones(d, device=losses.device)
+    for k, v in (loss_cfg.get("dim_weights") or {}).items():
+        wd[IO.ACTION_LABELS.index(k)] = float(v)
+    w = valid[:, :, None] * wd[None, None]
+    n = valid.sum().clamp_min(1.0)
+    base = (losses * w).sum() / (n * wd.sum())
+    info = {"loss_per_dim": ((losses * valid[:, :, None]).sum(dim=(0, 1)) / n).detach().float().cpu().numpy().tolist(),
+            "flow_weighted": float(base), "valid_target_fraction": float(valid.mean())}
+    total = base
+    sa = loss_cfg.get("steer_aux")
+    if sa and float(sa.get("weight", 0)) > 0:
+        K = int(sa.get("steps", 10))
+        dims = [IO.ACTION_LABELS.index(k) for k in sa.get("dims", ["base.v", "base.omega"])]
+        e = torch.nn.functional.smooth_l1_loss(aux["x0_hat"][:, :K, dims], aux["actions"][:, :K, dims], reduction="none", beta=0.05)
+        vk = valid[:, :K, None]
+        steer = (e * vk).sum() / (vk.sum().clamp_min(1.0) * len(dims))
+        total = total + float(sa["weight"]) * steer
+        info["steer_aux"] = float(steer)
+    info["loss"] = float(total)
+    return total, info
+
+
 def masked_loss(policy, batch, action_is_pad=None):
     """PI05Policy.forward's flow-matching loss with chunk steps beyond the episode end EXCLUDED.
 
@@ -150,9 +240,10 @@ def masked_loss(policy, batch, action_is_pad=None):
 class MaskedLoss(torch.nn.Module):
     """Wraps the policy so DDP sees one forward (gradient sync) while the loss masks padded targets."""
 
-    def __init__(self, policy):
+    def __init__(self, policy, loss_cfg=None):
         super().__init__()
         self.policy = policy
+        self.loss_cfg = loss_cfg
 
     def forward(self, batch, action_is_pad):
-        return masked_loss(self.policy, batch, action_is_pad)
+        return configured_loss(self.policy, batch, action_is_pad, self.loss_cfg)

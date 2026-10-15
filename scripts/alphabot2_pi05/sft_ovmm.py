@@ -12,6 +12,9 @@ VAL flow-matching loss with fixed noise for checkpoint selection. Added here:
   * heartbeat.json (step, time) for the scheduler; train_log.jsonl;
   * loss masked on action_is_pad (chunk steps past the episode end are clamped copies of the last frame;
     PI05Policy.forward would train them as targets).
+  * v2 options (yaml): `loss` (ovmm_model.configured_loss: per-dim flow weights + steering auxiliary on the
+    one-step denoised v / omega) and `history` (ovmm_model: past head-camera frames as extra image inputs +
+    stacked state). VAL (checkpoint selection) is always the plain masked flow-matching loss.
 Exit codes: 0 done, 3 non-finite loss (not retried by the scheduler), other = crash (retried).
 
     torchrun --nproc_per_node N sft_ovmm.py --config configs/alphabot2_pi05/sft_ovmm_balanced.yaml
@@ -83,11 +86,12 @@ def main():
 
     resume = newest_ckpt(out)
     src = str(resume / "policy") if resume else C["init_checkpoint"]
+    hist, loss_cfg = C.get("history"), C.get("loss")
     cfg = ovmm_model.build_config(C["init_checkpoint"], device=dev, dtype=C["precision"]["params"],
-                                  gradient_checkpointing=bool(C.get("gradient_checkpointing", True)))
+                                  gradient_checkpointing=bool(C.get("gradient_checkpointing", True)), history=hist)
     mtr = LeRobotDatasetMetadata("local/alphabot2_ovmm_train", root=C["train_data"])
-    stats = mtr.stats                                                    # TRAIN ONLY
-    dts = resolve_delta_timestamps(cfg, mtr)
+    stats = ovmm_model.history_stats(mtr.stats, hist)                   # TRAIN ONLY
+    dts = ovmm_model.history_delta_timestamps(resolve_delta_timestamps(cfg, mtr), hist)
     tr = LeRobotDataset("local/alphabot2_ovmm_train", root=C["train_data"], delta_timestamps=dts)
     va = LeRobotDataset("local/alphabot2_ovmm_val", root=C["val_data"], delta_timestamps=dts)
     fm = dict(np.load(Path(C["train_data"]) / "frame_meta.npz"))
@@ -98,7 +102,7 @@ def main():
     policy, pre, post = ovmm_model.build(cfg, src, C["init_checkpoint"], stats, device=dev)
     params = [p for p in policy.parameters() if p.requires_grad]
     # loss excludes chunk steps past the episode end (action_is_pad); see ovmm_model.masked_loss
-    model = ovmm_model.MaskedLoss(policy)
+    model = ovmm_model.MaskedLoss(policy, loss_cfg)
     if ddp:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[torch.cuda.current_device()],
                                                           gradient_as_bucket_view=True,
@@ -128,6 +132,7 @@ def main():
         seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * int(C["batch_per_gpu"]) * world)
     if rank == 0:
         info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
+                 "state_dim": ovmm_model.state_dim(hist), "history": hist, "loss_cfg": loss_cfg, "delta_timestamps": dts,
                  "resume_from": str(resume) if resume else None, "start_step": start, "world": world, "samples_seen_at_start": seen0,
                  "global_batch": int(C["batch_per_gpu"]) * world,
                  "planned_samples": int(C["batch_per_gpu"]) * world * steps,
@@ -152,6 +157,7 @@ def main():
         torch.manual_seed(1234)                                          # identical noise/time draws every time
         tot, n, pdim = 0.0, 0, np.zeros(18)
         for b in vloader:
+            b = ovmm_model.apply_history(b, hist)
             with amp:
                 loss, inf = ovmm_model.masked_loss(policy, pre(b), b["action_is_pad"])
             k = len(b["action"])
@@ -197,7 +203,7 @@ def main():
     it = iter(loader)
     t_log, n_log = time.time(), 0
     for step in range(start + 1, steps + 1):
-        batch = next(it)
+        batch = ovmm_model.apply_history(next(it), hist)
         lr = lr_at(step - 1, O["lr"], O["warmup"], steps, O["decay_lr"])
         for g in opt.param_groups:
             g["lr"] = lr
@@ -217,6 +223,7 @@ def main():
             rec = {"step": step, "samples_seen": seen, "effective_epochs": seen / len(tr), "loss": float(loss), "group_loss": {g: float(np.asarray(inf["loss_per_dim"])[s].mean())
                                                                     for g, s in GROUPS.items()},
                    "grad_norm": gn, "lr": lr, "samples_per_s": n_log / max(dt, 1e-9),
+                   **({"steer_aux": inf["steer_aux"], "flow_weighted": inf["flow_weighted"]} if "steer_aux" in inf else {}),
                    "gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9}
             log.write(json.dumps(rec) + "\n"); log.flush()
             (out / "heartbeat.json").write_text(json.dumps({"step": step, "time": time.time(), "loss": float(loss)}))

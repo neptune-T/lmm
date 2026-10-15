@@ -63,6 +63,10 @@ def main():
                     help="post-release 'settle' frames kept per episode (the OVMM stability window is not SFT behaviour)")
     ap.add_argument("--png", action="store_true", help="lossless PNG frames instead of video (millions of files)")
     ap.add_argument("--writer-threads", type=int, default=16)
+    ap.add_argument("--shard", default=None, help="k/N: convert only contiguous block k of N of the split (merge_shards.py)")
+    ap.add_argument("--streaming", action="store_true", help="encode video while adding frames (no PNG round trip)")
+    ap.add_argument("--encoder-threads", type=int, default=None)
+    ap.add_argument("--no-stats", action="store_true", help="skip exact stats (merge_shards.py computes them once)")
     args = ap.parse_args()
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
@@ -74,7 +78,8 @@ def main():
         shutil.rmtree(args.out)
     ds = LeRobotDataset.create(repo_id=f"local/alphabot2_ovmm_{args.split}", fps=10, features=features, root=args.out,
                                robot_type="alphabot2_habitat_ovmm", use_videos=not args.png,
-                               image_writer_threads=args.writer_threads)
+                               image_writer_threads=0 if args.streaming else args.writer_threads,
+                               streaming_encoding=bool(args.streaming and not args.png), encoder_threads=args.encoder_threads)
     manifest = None
     if args.manifest:
         manifest = json.loads(Path(args.manifest).read_text())
@@ -84,7 +89,12 @@ def main():
         missing = [u for u in manifest[args.split] if u not in acc]
         if missing:
             raise RuntimeError(f"manifest ids not accepted in {args.src}: {missing[:10]}")
-        rows = [acc[u] for u in manifest[args.split]]
+        ids = list(manifest[args.split])
+        if args.shard:
+            k, n = (int(x) for x in args.shard.split("/"))
+            per = -(-len(ids) // n)
+            ids = ids[k * per:(k + 1) * per]
+        rows = [acc[u] for u in ids]
     else:
         rows = []
         for s in args.src:
@@ -135,15 +145,15 @@ def main():
             print(f"{len(used)}/{len(rows)} episodes, {time.time() - t0:.0f}s", flush=True)
     ds.finalize()
     import exact_stats                                                  # lerobot's aggregated quantiles are not
-    stats_fix = exact_stats.apply(args.out, args.manifest, args.split,  # the data quantiles: exact, all frames
-                                  [str(u["unit"]) for u in used])
+    stats_fix = None if args.no_stats else exact_stats.apply(  # the data quantiles: exact, all frames
+        args.out, args.manifest, args.split, [str(u["unit"]) for u in used])
     np.savez(Path(args.out) / "frame_meta.npz", **{k: np.asarray(v) for k, v in fm.items()},
              stage_names=np.asarray(sorted(stage_names, key=stage_names.get)),
              scene_names=np.asarray(sorted(scenes, key=scenes.get)))
     Path(args.out, "policy_io.json").write_text(json.dumps(IO.describe(), indent=1))
     out = {"root": args.out, "split": args.split, "val_permille": args.val_permille, "keep_settle": args.keep_settle,
            "episodes": used, "policy_io": IO.describe(),
-           "exact_stats": True, "lerobot_aggregate_quantile_error": stats_fix,
+           "exact_stats": not args.no_stats, "lerobot_aggregate_quantile_error": stats_fix, "shard": args.shard,
            "manifest": args.manifest, "dataset_version": manifest.get("dataset_version") if manifest else None,
            "manifest_sha256": hashlib.sha256(Path(args.manifest).read_bytes()).hexdigest() if args.manifest else None,
            "frames": int(sum(u["frames"] for u in used)), "camera_map": CAM_MAP, "video": not args.png,

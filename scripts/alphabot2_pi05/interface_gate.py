@@ -73,8 +73,16 @@ def main():
     ok["A_state_slot_ordering"] = slots == expect
     meta = LeRobotDatasetMetadata("local/alphabot2_ovmm_train", root=C["train_data"])
     index = json.load(open(Path(C["train_data"]) / "ovmm_episode_index.json"))
-    cfg = ovmm_model.build_config(C["init_checkpoint"], h_exec=args.h_exec)
-    ds = LeRobotDataset("local/alphabot2_ovmm_train", root=C["train_data"], delta_timestamps=resolve_delta_timestamps(cfg, meta))
+    hist, loss_cfg = C.get("history"), C.get("loss")
+    cfg = ovmm_model.build_config(C["init_checkpoint"], h_exec=args.h_exec, history=hist)
+    ds = LeRobotDataset("local/alphabot2_ovmm_train", root=C["train_data"],
+                        delta_timestamps=ovmm_model.history_delta_timestamps(resolve_delta_timestamps(cfg, meta), hist))
+
+    def get(i):
+        """dataset item as the SFT loop sees it (history stacked tensors -> per-key inputs), batch dim 1"""
+        it = ds[i]
+        b = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in it.items() if k.startswith(("observation", "action", "task"))}
+        return ovmm_model.apply_history(b, hist)
     ep0 = index["episodes"][0]
     src = Path(ep0["source"])
     low = np.load(src / "lowdim.npz")
@@ -83,10 +91,21 @@ def main():
     start = int(ds.meta.episodes["dataset_from_index"][0]) if "dataset_from_index" in ds.meta.episodes.column_names else 0
     ts = sorted(set(np.linspace(0, T - 1, min(args.frames, T)).astype(int).tolist()))
     st_err, act_err, psnr_ok, psnr_cross = 0.0, 0.0, [], []
+    h_img_psnr, h_state_err = [], 0.0
     for t in ts:
-        item = ds[start + t]
-        st_err = max(st_err, float(np.abs(item["observation.state"].numpy() - IO.state_from_proprio(low["proprio"][t])).max()))
+        b = get(start + t)
+        item = {k: v[0] for k, v in b.items()}
+        st_err = max(st_err, float(np.abs(item["observation.state"].numpy()[:16] - IO.state_from_proprio(low["proprio"][t])).max()))
         act_err = max(act_err, float(np.abs(item["action"][0].numpy() - low["action"][t]).max()))     # chunk step 0 = label t
+        if hist:                                                  # history inputs == the source frames at t - k
+            for j, k in enumerate(hist["offsets"]):
+                tk = max(0, t - k)
+                hi = item[f"observation.images.{hist['camera']}_h{k}"].permute(1, 2, 0).numpy() * 255.0
+                mse = float(np.mean((hi - ims[IO.CAMERA_MAP[hist['camera']]][tk].astype(np.float64)) ** 2))
+                h_img_psnr.append(99.0 if mse == 0 else 10 * np.log10(255.0 ** 2 / mse))
+                if hist.get("state"):
+                    blk = item["observation.state"].numpy()[16 * (j + 1):16 * (j + 2)]
+                    h_state_err = max(h_state_err, float(np.abs(blk - IO.state_from_proprio(low["proprio"][tk])).max()))
         for k, cam in IO.CAMERA_MAP.items():
             img = (item[f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255.0)
             def psnr(ref):
@@ -97,6 +116,10 @@ def main():
                 other = "left_wrist_rgb" if cam == "right_wrist_rgb" else "right_wrist_rgb"
                 psnr_cross.append(psnr(ims[other][t]) - psnr(ims[cam][t]))
     ok["A_dataset_state_equals_mapped_proprio"] = st_err < 1e-5
+    if hist:
+        ok["H_history_alignment"] = bool(min(h_img_psnr) >= 30.0 and h_state_err < 1e-5)
+        rep["H"] = {"history": hist, "image_psnr_min_db": float(min(h_img_psnr)), "state_max_abs_err": h_state_err,
+                    "model_state_dim": ovmm_model.state_dim(hist)}
     ok["C_dataset_action_equals_source_label"] = act_err < 1e-5
     # Full lowering chain on the source episode (never state joint dims vs Cartesian action dims):
     # CartesianMobileAction18 label -> CartesianExecutor IK -> JointMobileAction18 -> Habitat next state
@@ -115,7 +138,7 @@ def main():
     ok["B_pixels_match_source_camera"] = float(np.min(psnr_ok)) >= 30.0
     ok["B_not_crossed"] = float(np.max(psnr_cross)) <= -3.0                 # the crossed source is clearly worse
     model_order = [k.split(".")[-1] for k in cfg.image_features]
-    ok["B_model_image_order_pretrained"] = model_order == [c for c in IO.MODEL_CAMERA_ORDER if c in IO.CAMERA_MAP]
+    ok["B_model_image_order_pretrained"] = model_order == [c for c in IO.MODEL_CAMERA_ORDER if c in IO.CAMERA_MAP] + ovmm_model.history_keys(hist)
     rep["B"] = {"dataset_keys": keys, "psnr_min_db": float(np.min(psnr_ok)), "crossed_minus_true_db_max": float(np.max(psnr_cross)),
                 "model_image_order": model_order, "camera_map": IO.CAMERA_MAP, "masked": list(IO.MASKED_CAMERAS),
                 "video_storage": bool(index.get("video"))}
@@ -149,10 +172,9 @@ def main():
     # ---------------- E: model (+ B masked == absent, C normalization round trip)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     cfg.device = dev
-    policy, pre, post = ovmm_model.build(cfg, C["init_checkpoint"], C["init_checkpoint"], meta.stats, device=dev)
+    policy, pre, post = ovmm_model.build(cfg, C["init_checkpoint"], C["init_checkpoint"], ovmm_model.history_stats(meta.stats, hist), device=dev)
     policy.eval()
-    item = ds[start + ts[len(ts) // 2]]
-    batch = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in item.items() if k.startswith(("observation", "action", "task"))}
+    batch = get(start + ts[len(ts) // 2])
     pb = pre(dict(batch))
     a_rt = post(pb["action"].clone()).float().cpu()
     ok["C_normalize_round_trip"] = float((a_rt - batch["action"].float()).abs().max()) <= 1e-3 * float(rngs.max())
@@ -225,8 +247,7 @@ def main():
     #   reduction   corrupt the padded steps' losses -> masked reduction bit-identical, = valid-step mean
     #   equivalence nothing padded -> masked forward bit-identical to lerobot's PI05Pytorch.forward
     #   training    ovmm_model.masked_loss (the SFT loss) == reduce_masked(flow_losses(masked)) same seed
-    it = ds[start + max(0, T - 10)]
-    raw = {k: (v[None] if torch.is_tensor(v) else [v]) for k, v in it.items() if k.startswith(("observation", "action", "task"))}
+    raw = get(start + max(0, T - 10))
     pm = raw["action_is_pad"][0].bool()
     corrupt = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in raw.items()}
     corrupt["action"][0, pm] = 100.0
@@ -274,6 +295,15 @@ def main():
     ok["F_pad_probe_detects_unmasked_leak"] = min(sens) > 1e-4
     ok["F_masked_forward_equals_lerobot_without_padding"] = (not bool(nopad.any())) and bool(torch.equal(lerobot_l, ours_l))
     ok["F_sft_loss_uses_padding_contract"] = abs(lm_api - lm_ref) <= 1e-6 * max(1.0, abs(lm_ref))
+    if loss_cfg:                                                  # the run's configured loss (v2 steering terms)
+        corrupt = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in raw.items()}
+        corrupt["action"][0, pm] = 100.0
+        with torch.no_grad():
+            tm = torch.full((1,), 0.5, device=dev)
+            cl, cinf = ovmm_model.configured_loss(policy, pre(dict(raw)), pad, loss_cfg, noise=nz, time=tm)
+            cl_c, _ = ovmm_model.configured_loss(policy, pre(dict(corrupt)), pad, loss_cfg, noise=nz, time=tm)
+        ok["F_configured_loss_padding_contract"] = bool(torch.isfinite(cl)) and abs(float(cl) - float(cl_c)) <= 1e-6 * max(1.0, abs(float(cl)))
+        rep["F_configured"] = {"loss_cfg": loss_cfg, "loss": float(cl), "loss_corrupted_pads": float(cl_c), "terms": {k: cinf.get(k) for k in ("flow_weighted", "steer_aux")}}
     exp = window_exposure(epi, stg, sid, cfg.chunk_size)
     ok["F_settle_exposure_bounded"] = exp["max_settle_targets_per_window"] <= keep
     rep["F"] = {"keep_settle": keep, "padded_steps_in_probe": int(pm.sum()), "probe_times": [0.1, 0.5, 0.9],
