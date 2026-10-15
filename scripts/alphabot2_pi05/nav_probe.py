@@ -56,8 +56,11 @@ def metrics(pred_w, pred_c, w):
         return out
     turn = np.abs(w) > 0.05
     out["n_turn"] = int(turn.sum())
+    out["majority_acc3"] = round(float(max((cls(w) == k).mean() for k in range(3))), 3)
     if turn.any():
-        out["turn_sign_acc"] = round(float((np.sign(pred_w[turn]) == np.sign(w[turn])).mean()), 3)
+        out["turn_sign_acc_reg"] = round(float((np.sign(pred_w[turn]) == np.sign(w[turn])).mean()), 3)
+        if pred_c is not None:                                  # classifier: predicted turn class == true turn side
+            out["turn_sign_acc_cls"] = round(float((pred_c[turn] == cls(w)[turn]).mean()), 3)
     if pred_c is not None:
         out["acc3"] = round(float((pred_c == cls(w)).mean()), 3)
     if len(w) > 2 and pred_w.std() > 1e-6 and w.std() > 1e-6:
@@ -68,9 +71,11 @@ def metrics(pred_w, pred_c, w):
 
 def train_probe(Xtr, ytr, Xte, dev, epochs=40, hidden=256, seed=0):
     torch.manual_seed(seed)
-    mu, sd = Xtr.mean(0, keepdims=True), Xtr.std(0, keepdims=True) + 1e-6
-    Xtr_t = torch.as_tensor((Xtr - mu) / sd, dtype=torch.float32, device=dev)
-    Xte_t = torch.as_tensor((Xte - mu) / sd, dtype=torch.float32, device=dev)
+    mu, sd = Xtr.mean(0, keepdims=True), Xtr.std(0, keepdims=True) + 1e-3
+    # clipped standardization: near-constant train dims (e.g. per-episode language PCA) must not explode on
+    # held-out episodes (the unclipped regression head diverged: omega MAE 30-150)
+    Xtr_t = torch.as_tensor(np.clip((Xtr - mu) / sd, -5, 5), dtype=torch.float32, device=dev)
+    Xte_t = torch.as_tensor(np.clip((Xte - mu) / sd, -5, 5), dtype=torch.float32, device=dev)
     yc = torch.as_tensor(cls(ytr), device=dev)
     yr = torch.as_tensor(ytr, dtype=torch.float32, device=dev)
     net = torch.nn.Sequential(torch.nn.Linear(Xtr.shape[1], hidden), torch.nn.GELU(), torch.nn.Dropout(0.3),
@@ -84,7 +89,7 @@ def train_probe(Xtr, ytr, Xte, dev, epochs=40, hidden=256, seed=0):
         for i in range(0, len(perm), 512):
             b = perm[i:i + 512]
             o = net(Xtr_t[b])
-            loss = torch.nn.functional.cross_entropy(o[:, :3], yc[b], weight=cw) + 4 * torch.nn.functional.mse_loss(o[:, 3], yr[b])
+            loss = torch.nn.functional.cross_entropy(o[:, :3], yc[b], weight=cw) + 4 * torch.nn.functional.smooth_l1_loss(o[:, 3], yr[b], beta=0.1)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -141,6 +146,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--audit-npz", default=None)
     ap.add_argument("--audit-ds", default=None)
+    ap.add_argument("--cache", default=None, help="npz cache of the per-frame encoder features (reused if present)")
     a = ap.parse_args()
     dev = "cuda"
     recs = load_navobs(a.navobs)
@@ -177,25 +183,31 @@ def main():
     print("oracle rules", json.dumps(rep["oracle_rule"]), flush=True)
 
     # ---- policy-observable features from the SFT checkpoint's own encoders
-    from lerobot.configs.policies import PreTrainedConfig
-    from lerobot.policies.pi05.modeling_pi05 import PI05Policy
-    from pi05_runtime import SPM, SentencePieceTokenizer
-    cfg = PreTrainedConfig.from_pretrained(a.ckpt)
-    cfg.compile_model, cfg.gradient_checkpointing, cfg.device, cfg.dtype = False, False, dev, "bfloat16"
-    policy = PI05Policy.from_pretrained(a.ckpt, config=cfg).to(dev).eval()
-    tok = SentencePieceTokenizer(SPM)
-    img, state, lang = {}, {}, {}
-    for u in sorted(set(U.tolist())):
-        need = sorted({max(0, t - k * HIST) for t in T[U == u] for k in range(8)})
-        z = np.load(os.path.join(dirs[u], "images.npz"))
-        ims3 = {c: z[IO.CAMERA_MAP[c]][need] for c in CAMS}
-        E = embed_frames(policy, ims3, dev)
-        img[u] = {t: np.concatenate([E[c][i] for c in CAMS]) for i, t in enumerate(need)}
-        prop = np.load(os.path.join(dirs[u], "lowdim.npz"))["proprio"]
-        state[u] = {t: IO.state_from_proprio(prop[t]).astype(np.float32) for t in need}
-        lang[u] = embed_text(policy, tok, json.load(open(os.path.join(dirs[u], "meta.json")))["instruction"], dev)
-    del policy
-    torch.cuda.empty_cache()
+    import pickle
+    if a.cache and os.path.exists(a.cache):
+        img, state, lang = pickle.load(open(a.cache, "rb"))
+    else:
+        from lerobot.configs.policies import PreTrainedConfig
+        from lerobot.policies.pi05.modeling_pi05 import PI05Policy
+        from pi05_runtime import SPM, SentencePieceTokenizer
+        cfg = PreTrainedConfig.from_pretrained(a.ckpt)
+        cfg.compile_model, cfg.gradient_checkpointing, cfg.device, cfg.dtype = False, False, dev, "bfloat16"
+        policy = PI05Policy.from_pretrained(a.ckpt, config=cfg).to(dev).eval()
+        tok = SentencePieceTokenizer(SPM)
+        img, state, lang = {}, {}, {}
+        for u in sorted(set(U.tolist())):
+            need = sorted({max(0, t - k * HIST) for t in T[U == u] for k in range(8)})
+            z = np.load(os.path.join(dirs[u], "images.npz"))
+            ims3 = {c: z[IO.CAMERA_MAP[c]][need] for c in CAMS}
+            E = embed_frames(policy, ims3, dev)
+            img[u] = {t: np.concatenate([E[c][i] for c in CAMS]) for i, t in enumerate(need)}
+            prop = np.load(os.path.join(dirs[u], "lowdim.npz"))["proprio"]
+            state[u] = {t: IO.state_from_proprio(prop[t]).astype(np.float32) for t in need}
+            lang[u] = embed_text(policy, tok, json.load(open(os.path.join(dirs[u], "meta.json")))["instruction"], dev)
+        del policy
+        torch.cuda.empty_cache()
+        if a.cache:
+            pickle.dump((img, state, lang), open(a.cache, "wb"), protocol=4)
     Dc = len(next(iter(next(iter(img.values())).values()))) // 3
     tr = ~TEST
     tr_units = set(U[tr].tolist())
