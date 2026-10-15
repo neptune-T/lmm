@@ -57,10 +57,11 @@ for v in A B; do
   sed -e "s#alphabot2_ovmm_v2_train#alphabot2_ovmm_${TAG}_train#; s#alphabot2_ovmm_v2_val#alphabot2_ovmm_${TAG}_val#; s#/dev/shm/lmm_runtime/sft/v2$v#/dev/shm/lmm_runtime/sft/${TAG}$v#" \
       /workspace/lmm/configs/alphabot2_pi05/sft_v2$v.yaml > $C
   [ "$MODE" = smoke ] && sed -i "s/^steps: .*/steps: 20/; s/^val_every: .*/val_every: 10/; s/^ckpt_every: .*/ckpt_every: 10/" $C
-  if [ ! -f $O/gate_$v/interface_gate.json ] || ! grep -q '"pass": true' $O/gate_$v/interface_gate.json; then
+  gate_ok() { python3 -c "import json,sys; g=json.load(open('$O/gate_$1/interface_gate.json')); sys.exit(0 if g['pass'] is True and all(g['checks'].values()) else 1)" 2>/dev/null; }
+  if ! gate_ok $v; then
     (cd $P5 && CUDA_VISIBLE_DEVICES=$GPU_EVAL $PY interface_gate.py --config $C --collect $R/collect_clean_v1 --h-exec 5 --out $O/gate_$v > $L/${TAG}_gate_$v.log 2>&1)
     python3 -c "import json; g=json.load(open('$O/gate_$v/interface_gate.json')); print('gate $v', g['pass'], [k for k,x in g['checks'].items() if not x])"
-    grep -q '"pass": true' $O/gate_$v/interface_gate.json || { ev BLOCKED "\"gate\": \"INTERFACE\", \"variant\": \"$v\""; exit 1; }
+    gate_ok $v || { ev BLOCKED "\"gate\": \"INTERFACE\", \"variant\": \"$v\""; exit 1; }   # top-level pass only
   fi
 done
 ev gates_pass

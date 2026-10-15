@@ -214,7 +214,8 @@ def main():
     with torch.no_grad(), torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
         loss_bf16 = seeded_loss()
         chunk = post(policy.predict_action_chunk(pre(dict(batch)), noise=noise)).float().cpu()
-    ok["B_masked_equals_absent"] = (len(imgs4) == 4 and [bool(m[0]) for m in masks4] == [True, True, True, False]
+    n_present = len(cfg.image_features)                      # 3 pretrained cameras (+ history frames for v2 B)
+    ok["B_masked_equals_absent"] = (len(imgs4) == n_present + 1 and [bool(m[0]) for m in masks4] == [True] * n_present + [False]
                                     and abs(float(loss3) - float(loss4)) <= 1e-4 * max(1.0, abs(float(loss3))))
     ok["E_loss_finite"] = bool(torch.isfinite(loss3))
     ok["E_chunk_shape_finite"] = tuple(chunk.shape) == (1, cfg.chunk_size, 18) and bool(torch.isfinite(chunk).all())
