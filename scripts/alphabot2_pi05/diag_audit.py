@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--n", type=int, default=400)
     ap.add_argument("--h-exec", type=int, default=5)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--splits", default="train,val")
+    ap.add_argument("--save-npz", default=None, help="also save per-frame predictions/labels (OUT_<split>.npz)")
     a = ap.parse_args()
     rep = {"ckpt": a.ckpt, "h_exec": a.h_exec}
 
@@ -81,7 +83,7 @@ def main():
     except Exception as e:
         rep["reference_error"] = repr(e)[:300]
 
-    for split, root in (("train", a.train), ("val", a.val)):
+    for split, root in [x for x in (("train", a.train), ("val", a.val)) if x[0] in a.splits.split(",")]:
         ds = LeRobotDataset(repo_id="local/audit", root=root, delta_timestamps={"action": [i / 10 for i in range(50)]})
         idx, nav, names, st = sample(root, min(a.n, len(ds) // 2), 7 if split == "train" else 8)
         P, E, PAD, NAVF, SRV_REF = [], [], [], [], []
@@ -128,10 +130,42 @@ def main():
                 gv[f"{name}_cmd_agree"] = round(float(((P[..., d][mm] > 0.5) == (E[..., d][mm] > 0.5)).mean()), 3)
             out[g] = gv
         rep[split] = out
+        if a.save_npz:
+            np.savez(f"{a.save_npz}_{split}.npz", idx=np.asarray(idx), P=P, E=E, PAD=PAD, NAV=NAVF)
         print(split, json.dumps({k: out[k] for k in ("frames", "server_vs_fp32_ref_max_norm")}), json.dumps(out["navigation"]), flush=True)
     json.dump(rep, open(a.out, "w"), indent=1)
     print("###AUDIT###" + json.dumps({"normalizer": rep["normalizer_vs_dataset_max_abs"]}), flush=True)
 
 
+def stratify(npz, ds_root):
+    """omega/v agreement on navigation frames by steps remaining until the navigation stage ends."""
+    t = np.load(npz)
+    fm = dict(np.load(os.path.join(ds_root, "frame_meta.npz")))
+    ep, st = np.asarray(fm["episode_index"]), np.asarray(fm["stage"])
+    left = np.zeros(len(st), int)
+    for e in np.unique(ep):                                     # steps until this stage run ends
+        ix = np.flatnonzero(ep == e)
+        run_end = len(ix)
+        for j in range(len(ix) - 1, -1, -1):
+            if j < len(ix) - 1 and st[ix[j]] != st[ix[j + 1]]:
+                run_end = j + 1
+            left[ix[j]] = run_end - j
+    out = {}
+    for lo, hi in ((0, 25), (25, 75), (75, 150), (150, 10 ** 9)):
+        sel = t["NAV"] & (left[t["idx"]] >= lo) & (left[t["idx"]] < hi)
+        if sel.sum() < 5:
+            continue
+        P, E, m = t["P"][sel], t["E"][sel], ~t["PAD"][sel]
+        pw, ew = P[..., 17][m], E[..., 17][m]
+        big = np.abs(ew) > 0.05
+        out[f"{lo}-{hi}"] = {"frames": int(sel.sum()), "omega_sign_agree": round(float((np.sign(pw[big]) == np.sign(ew[big])).mean()), 3) if big.any() else None,
+                             "omega_corr": round(float(np.corrcoef(pw, ew)[0, 1]), 3), "omega_mae": round(float(np.abs(pw - ew).mean()), 3),
+                             "v_mae": round(float(np.abs(P[..., 16][m] - E[..., 16][m]).mean()), 3)}
+    return out
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--stratify":
+        print("###STRATIFY###" + json.dumps(stratify(sys.argv[2], sys.argv[3])))
+    else:
+        main()
