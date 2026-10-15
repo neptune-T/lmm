@@ -64,7 +64,7 @@ def main():
     dirs = {d["unit"]: d["dir"] for d in m["train_detail"] + m["val_detail"]}
     rep = {}
     for f in sorted(glob.glob(os.path.join(a.traces, "*.npz"))):
-        unit = os.path.basename(f)[:-4].replace("_r", "#")
+        unit = os.path.basename(f)[:-4].removeprefix("trace_").replace("_r", "#")
         t = np.load(f)
         pose, act, dist = t["pose"], t["act"], t["dist"]
         r = {"funnel": json.loads(str(t["funnel"])), "policy": stats(pose, act[:, 16], act[:, 17], dist)}
