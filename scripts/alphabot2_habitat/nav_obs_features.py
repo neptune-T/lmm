@@ -2,16 +2,19 @@
 
 For every navigation frame (stride STRIDE) of the given accepted episodes, from the recorded base pose
 (metadata.npz base_xz_yaw) in the episode's own seeded world (HE.reset_to, the collection contract):
-  visible            target object seen by the head camera: some of {bbox centre, 8 shrunk corners} projects
-                     inside the 69 deg x 320x240 image in front of the camera and a ray from the camera to it
-                     is not blocked by other geometry (the robot's own links are ignored) -- navigate_to_object
-                     frames; on navigate_to_receptacle frames the target is the nearest goal receptacle point
-  vis_points         how many of those 9 points are visible
-  dist_target_m      euclidean base-to-target distance
-  bearing_target     target direction relative to the base heading (rad, + = counter-clockwise, the sign of
-                     a positive omega)
-  bearing_waypoint   direction of the point 1 m ahead on the navmesh shortest path from the frame's pose to
-                     where the expert ended that navigation stage (the expert follows such a path)
+  stage_target       the stage's own target: navigate_to_object -> the target object; navigate_to_receptacle ->
+                     the candidate goal receptacle the expert went to (the one nearest the stage's end pose)
+  visible            the stage target seen by the head camera: some of its points (object: bbox centre + 8
+                     shrunk corners; receptacle: 12 seeded surface samples) projects inside the 69 deg 320x240
+                     image in front of the camera and a ray to it is not blocked (the robot's own links are
+                     ignored; on navigate_to_receptacle also the carried object, which this static diagnostic
+                     world still shows at its start pose)
+  vis_points         how many of those points are visible
+  dist_target_m      euclidean base-to-target distance (target centre)
+  bearing_target     stage-target direction relative to the base heading (rad, + = counter-clockwise, the sign
+                     of a positive omega)
+  bearing_waypoint   ORACLE UPPER BOUND only: direction of the point 1 m ahead on the navmesh shortest path
+                     from the frame's pose to where the expert ended that navigation stage
   geodesic_left_m    geodesic distance left to that stage end
   v, omega           the expert's labels; t, stage, steps_left (to the stage end)
 The head camera is rigid on the base: its pose per frame = recorded base pose x the base->camera transform
@@ -19,7 +22,7 @@ measured once at reset. Nothing here is written into any dataset.
 
     UNITS_FILE=... OUT=... WORKER=k NWORKERS=n GPU=0 run_habitat.sh nav_obs_features.py
 """
-import json, math, os, sys
+import json, math, os, random, sys
 
 import numpy as np
 
@@ -43,6 +46,11 @@ items = [json.loads(l) for l in open(os.environ["UNITS_FILE"]) if l.strip()][WK:
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split="train")
 
 
+def zlib_seed(name):
+    import zlib
+    return zlib.crc32(name.encode())
+
+
 def np4(M):
     return np.array([[M[c][r] for c in range(4)] for r in range(4)])
 
@@ -64,7 +72,7 @@ def bearing(xz, yaw, p):
     return wrap(math.atan2(-(p[2] - xz[1]), p[0] - xz[0]) - yaw)
 
 
-def visible(cam_T, pts, target_ids, ignore):
+def visible(cam_T, pts, target_ids, ignore, surface=False):
     sim = env.sim
     Ti = np.linalg.inv(cam_T)
     o = cam_T[:3, 3]
@@ -82,7 +90,7 @@ def visible(cam_T, pts, target_ids, ignore):
         for h in res.hits:
             if h.object_id in ignore:
                 continue
-            ok = h.object_id in target_ids or h.ray_distance >= L - 0.08
+            ok = h.object_id in target_ids or h.ray_distance >= L - (0.15 if surface else 0.08)
             break
         n += int(ok)
     return n
@@ -118,7 +126,15 @@ for it in items:
         corners = [c + 0.8 * (np.array([bx, by, bz]) - c) for bx in (bb.min[0], bb.max[0]) for by in (bb.min[1], bb.max[1])
                    for bz in (bb.min[2], bb.max[2])]
         obj_pts = [(Tobj @ np.r_[p, 1.0])[:3] for p in [c] + corners]
-        goal_pts = [np.asarray(g, float) for g in np.asarray(goals).reshape(-1, 3)]
+        receps = {}                                                       # goal receptacle -> 12 surface samples
+        for g in env.current_episode.candidate_goal_receps:
+            if g.object_name in sim.receptacles and g.object_name not in receps:
+                random.seed(zlib_seed(g.object_name))
+                np.random.seed(zlib_seed(g.object_name) % (2 ** 31))
+                receps[g.object_name] = [np.array(sim.receptacles[g.object_name].sample_uniform_global(sim, 0.6), float)
+                                         for _ in range(12)]
+        if not receps:
+            receps["_goals"] = [np.asarray(g, float) for g in np.asarray(goals).reshape(-1, 3)]
         ignore = {rob.sim_obj.object_id, *rob.sim_obj.link_object_ids.keys()}
         tid = {obj.object_id}
         runs, s0 = [], 0                                                  # navigation stage runs [start, end)
@@ -129,16 +145,20 @@ for it in items:
                 s0 = t
         for a0, a1, name in runs:
             end = base[a1 - 1]
+            if name == "navigate_to_receptacle":                         # the receptacle the expert went to
+                rname = min(receps, key=lambda k: min(math.hypot(p[0] - end[0], p[2] - end[1]) for p in receps[k]))
+                rpts = receps[rname]
+                rc = np.mean(rpts, 0)
             end_nav = sim.pathfinder.snap_point(mn.Vector3(end[0], T0[1, 3], end[1]))
             for t in range(a0, a1, STRIDE):
                 x, z, yaw = base[t]
                 Tc = root_at(x, z, yaw, T0[1, 3], yaw0, T0[:3, :3]) @ X
                 if name == "navigate_to_object":
-                    pts, tgt = obj_pts, obj_pts[0]
-                    nvis = visible(Tc, pts, tid, ignore)
+                    tgt, tname = obj_pts[0], "object"
+                    nvis = visible(Tc, obj_pts, tid, ignore)
                 else:
-                    tgt = min(goal_pts, key=lambda g: math.hypot(g[0] - x, g[2] - z))
-                    nvis = None
+                    tgt, tname = rc, rname
+                    nvis = visible(Tc, rpts, set(), ignore | tid, surface=True)
                 sp = habitat_sim.ShortestPath()
                 sp.requested_start = sim.pathfinder.snap_point(mn.Vector3(x, T0[1, 3], z))
                 sp.requested_end = end_nav
@@ -155,7 +175,7 @@ for it in items:
                             wp = prev + (q - prev) * (1.0 - acc) / max(seg, 1e-9)
                             break
                         acc, prev = acc + seg, q
-                rec["frames"].append({"t": t, "stage": name, "steps_left": a1 - t, "visible": None if nvis is None else nvis > 0,
+                rec["frames"].append({"t": t, "stage": name, "stage_target": tname, "steps_left": a1 - t, "visible": nvis > 0,
                                       "vis_points": nvis, "dist_target_m": round(math.hypot(tgt[0] - x, tgt[2] - z), 3),
                                       "bearing_target": round(bearing((x, z), yaw, tgt), 4),
                                       "bearing_waypoint": None if wp is None else round(bearing((x, z), yaw, wp), 4),
