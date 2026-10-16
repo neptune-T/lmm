@@ -66,9 +66,19 @@ def main():
     ap.add_argument("--shard", default=None, help="k/N: convert only contiguous block k of N of the split (merge_shards.py)")
     ap.add_argument("--streaming", action="store_true", help="encode video while adding frames (no PNG round trip)")
     ap.add_argument("--encoder-threads", type=int, default=None)
+    ap.add_argument("--encoder-queue-maxsize", type=int, default=4096,
+                    help="frames buffered per camera; lerobot's default (30) DROPS frames when the encoder lags (v2: 179 videos)")
     ap.add_argument("--no-stats", action="store_true", help="skip exact stats (merge_shards.py computes them once)")
     args = ap.parse_args()
+    import logging
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    class DropCounter(logging.Handler):                                 # lerobot only WARNS on a dropped frame; a
+        n = 0                                                           # dropped frame shifts every later image of
+        def emit(self, rec):                                            # that video against its state/action labels
+            if "dropped" in rec.getMessage():
+                DropCounter.n += 1
+    logging.getLogger("lerobot.datasets.video_utils").addHandler(DropCounter())
 
     img = {"dtype": "image" if args.png else "video", "shape": (240, 320, 3), "names": ["height", "width", "channels"]}
     features = {"observation.state": {"dtype": "float32", "shape": (16,), "names": list(IO.STATE_LABELS)},
@@ -79,7 +89,8 @@ def main():
     ds = LeRobotDataset.create(repo_id=f"local/alphabot2_ovmm_{args.split}", fps=10, features=features, root=args.out,
                                robot_type="alphabot2_habitat_ovmm", use_videos=not args.png,
                                image_writer_threads=0 if args.streaming else args.writer_threads,
-                               streaming_encoding=bool(args.streaming and not args.png), encoder_threads=args.encoder_threads)
+                               streaming_encoding=bool(args.streaming and not args.png), encoder_threads=args.encoder_threads,
+                               encoder_queue_maxsize=args.encoder_queue_maxsize)
     manifest = None
     if args.manifest:
         manifest = json.loads(Path(args.manifest).read_text())
@@ -128,6 +139,8 @@ def main():
                 frame[f"observation.images.{k}"] = frames[k][t]
             ds.add_frame(frame)
         ds.save_episode()
+        if DropCounter.n:
+            raise RuntimeError(f"{d}: video encoder dropped frames ({DropCounter.n} warnings): images would be misaligned")
         ei = len(used)
         sc = scenes.setdefault(meta["scene"], len(scenes))
         for t in range(T):

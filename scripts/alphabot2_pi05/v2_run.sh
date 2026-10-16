@@ -66,6 +66,10 @@ convert() {  # split nshards
         --no-stats --out $DS/${TAG}_shards/${split}_$k > $L/${TAG}_convert_${split}_$k.log 2>&1 &
   done
   wait
+  for k in $(seq 0 $((n - 1))); do                                  # every shard complete, no dropped video frame
+    [ -f $DS/${TAG}_shards/${split}_$k/ovmm_episode_index.json ] && ! grep -q "dropped.*frame" $L/${TAG}_convert_${split}_$k.log \
+      || { ev BLOCKED "\"gate\": \"CONVERT_SHARD\", \"split\": \"$split\", \"shard\": $k"; exit 1; }
+  done
   $PY $P5/merge_shards.py --shards $(for k in $(seq 0 $((n - 1))); do printf "$DS/${TAG}_shards/${split}_$k "; done) \
       --out $out --manifest $M --split $split > $L/${TAG}_merge_$split.log 2>&1 || { ev BLOCKED "\"gate\": \"CONVERT\", \"split\": \"$split\""; exit 1; }
   grep MERGE $L/${TAG}_merge_$split.log
