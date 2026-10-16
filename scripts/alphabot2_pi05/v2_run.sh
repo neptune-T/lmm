@@ -61,7 +61,10 @@ NT=$(python3 -c "import json; print(json.load(open('$M'))['n_train'])"); NV=$(py
 convert() {  # split nshards
   local split=$1 n=$2 out=$DS/alphabot2_ovmm_${TAG}_$1
   [ -f $out/meta/exact_stats.json ] && [ -f $out/ovmm_episode_index.json ] && return 0
+  while pgrep -f "ovmm_to_lerobot.py .*--split $split .*/${TAG}_shards/" > /dev/null; do sleep 30; done   # adopt a running conversion
   for k in $(seq 0 $((n - 1))); do
+    [ -f $DS/${TAG}_shards/${split}_$k/ovmm_episode_index.json ] && grep -q "###CONVERT###" $L/${TAG}_convert_${split}_$k.log \
+      && ! grep -q "dropped.*frame" $L/${TAG}_convert_${split}_$k.log && continue                            # shard already complete
     $PY $P5/ovmm_to_lerobot.py --src $R/collect_clean_v1 --manifest $M --split $split --shard $k/$n --streaming --encoder-threads 4 \
         --no-stats --out $DS/${TAG}_shards/${split}_$k > $L/${TAG}_convert_${split}_$k.log 2>&1 &
   done
@@ -75,8 +78,19 @@ convert() {  # split nshards
   grep MERGE $L/${TAG}_merge_$split.log
 }
 NS=$([ "$MODE" = smoke ] && echo 2 || echo 24)
-convert train $NS; convert val $([ $NV -lt 4 ] && echo 1 || echo 2)
+NSV=$([ $NV -lt 4 ] && echo 1 || echo 2)
+convert train $NS; convert val $NSV
 ev converted
+# every video fully decoded (frame counts per file and per episode), no dropped-frame log, cross-shard alignment
+VV=$O/video_verify.json
+if ! python3 -c "import json,sys; sys.exit(0 if json.load(open('$VV'))['pass'] is True else 1)" 2>/dev/null; then
+  $PY $P5/verify_videos.py --dataset $DS/alphabot2_ovmm_${TAG}_train:$NS $DS/alphabot2_ovmm_${TAG}_val:$NSV \
+      --logs "$L/${TAG}_convert_*.log" --out $VV > $L/${TAG}_verify_videos.log 2>&1
+  grep "###VIDEO_VERIFY###" $L/${TAG}_verify_videos.log
+  python3 -c "import json,sys; sys.exit(0 if json.load(open('$VV'))['pass'] is True else 1)" 2>/dev/null \
+    || { ev BLOCKED "\"gate\": \"VIDEO_VERIFY\""; exit 1; }
+fi
+ev videos_verified
 
 # ---------------------------------------------------------------- 3. configs + interface gates
 for v in A B; do
