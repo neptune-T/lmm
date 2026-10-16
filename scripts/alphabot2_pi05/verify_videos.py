@@ -8,8 +8,9 @@
    must end with its ###CONVERT### record.
 3. alignment: across shards (first / middle / last episode of every shard) and across video files (first / last
    episode of every camera_top file), sampled frames read through LeRobotDataset (the training loader) must match
-   the source images.npz for all cameras (PSNR >= 30 dB, no offset within +-3 frames matching > 1 dB better) and the
-   source proprio/action labels.
+   the source images.npz for all cameras (PSNR >= 30 dB; no SUSTAINED shift: 3 consecutive frames around a sampled
+   frame all matching the same other offset within +-3 by > 1 dB -- what a dropped frame does to every later frame;
+   isolated ties on near-static frames are codec noise) and the source proprio/action labels.
     verify_videos.py --dataset TRAIN_DIR:24 VAL_DIR:2 --logs 'LOGDIR/v2_convert_*.log' --out verify.json
 """
 import argparse, glob, json, math, os, re, sys
@@ -22,7 +23,7 @@ REPO = os.environ.get("LMM_REPO", str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2 import ovmm_policy_io as IO  # noqa: E402
 
-PSNR_MIN, OFFSETS, SHIFT_DB = 30.0, range(-3, 4), 1.0     # a shift = another offset matching > 1 dB better
+PSNR_MIN, OFFSETS, SHIFT_DB = 30.0, range(-3, 4), 1.0     # shifted frame = another offset matching > 1 dB better
 
 
 def decode_times(path):
@@ -36,6 +37,14 @@ def decode_times(path):
 def psnr(a, b):
     m = float(np.mean((a.astype(np.float64) - b.astype(np.float64)) ** 2))
     return 99.0 if m == 0 else 10 * math.log10(255.0 ** 2 / m)
+
+
+def shift_at(ds, s0, t, T, k, src):
+    """(best offset in OFFSETS, its PSNR gain over offset 0, PSNR at offset 0) of decoded frame t vs the source"""
+    img = ds[s0 + t][f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255.0
+    sc = {o: psnr(img, src[t + o]) for o in OFFSETS if 0 <= t + o < T}
+    best = max(sc, key=sc.get)
+    return best, sc[best] - sc[0], sc[0]
 
 
 def align_episode(job):
@@ -54,13 +63,17 @@ def align_episode(job):
         ac = float(np.abs(it["action"].numpy() - low["action"][t]).max())
         rec = {"t": t, "state_err": st, "action_err": ac}
         for k, cam in IO.CAMERA_MAP.items():
-            img = it[f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255.0
-            sc = {o: psnr(img, ims[cam][t + o]) for o in OFFSETS if 0 <= t + o < T}
-            best = max(sc, key=sc.get)
-            gain = sc[best] - sc[0]                                       # static frames (settle) tie across offsets
-            rec[k] = {"psnr": round(sc[0], 2), "best_offset": best, "best_gain_db": round(gain, 2)}
-            if sc[0] < PSNR_MIN or gain > SHIFT_DB:
-                out["fail"].append({"t": t, "camera": k, "psnr": round(sc[0], 2), "best_offset": best, "best_gain_db": round(gain, 2)})
+            best, gain, p0 = shift_at(ds, s0, t, T, k, ims[cam])
+            rec[k] = {"psnr": round(p0, 2), "best_offset": best, "best_gain_db": round(gain, 2)}
+            sustained = None
+            if gain > SHIFT_DB:          # a dropped frame shifts EVERY later frame; near-static frames tie by codec noise
+                win = {u: shift_at(ds, s0, u, T, k, ims[cam]) for u in range(max(0, t - 2), min(T, t + 3))}
+                sh = [u for u, (b, g, _) in sorted(win.items()) if b == best and g > SHIFT_DB]
+                sustained = any(u + 1 in sh and u + 2 in sh for u in sh)
+                rec[k]["sustained_shift"] = sustained
+            if p0 < PSNR_MIN or sustained:
+                out["fail"].append({"t": t, "camera": k, "psnr": round(p0, 2), "best_offset": best, "best_gain_db": round(gain, 2),
+                                    "sustained_shift": sustained})
         if st > 1e-5 or ac > 1e-5:
             out["fail"].append({"t": t, "why": "labels", "state_err": st, "action_err": ac})
         out["checked"].append(rec)
