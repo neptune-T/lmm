@@ -23,7 +23,7 @@ from ovmm_model import IO  # noqa: E402
 from wire import recv_msg, send_msg  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset  # noqa: E402
 
-H_EXEC, STOP_V, STOP_W, ARM_DEV_M = 5, 0.03, 0.05, 0.05
+H_EXEC, STOP_V, STOP_W, ARM_DEV_M = 5, 0.03, 0.05, 0.15     # reach-like: expert reach..retract active arm 0.25-0.37 m off NAV; tuck <= 0.06 m
 BINS = [(0, 1), (1, 2), (2, 4), (4, 8), (8, 99)]
 LXYZ, RXYZ = slice(0, 3), slice(7, 10)
 

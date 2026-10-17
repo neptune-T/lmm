@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 DT, MOVE_V, MOVE_W, CMD_V, CMD_W = 0.1, 0.03, 0.05, 0.03, 0.05
-ARM_DEV_M, FAR_M, ONSET_STEPS = 0.05, 1.5, 100
+ARM_DEV_M, FAR_M, ONSET_STEPS = 0.15, 1.5, 100   # reach-like (expert reach..retract 0.25-0.37 m); tuck stays <= 0.06 m
 BINS = [(0, 1), (1, 2), (2, 4), (4, 8), (8, 99)]
 LXYZ, RXYZ, GRIP, V, W = slice(0, 3), slice(7, 10), slice(14, 16), 16, 17
 
