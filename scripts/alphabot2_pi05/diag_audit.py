@@ -18,6 +18,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wire import recv_msg, send_msg  # noqa: E402
+import ovmm_model  # noqa: E402
 from ovmm_model import IO  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset  # noqa: E402
 
@@ -54,7 +55,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--splits", default="train,val")
     ap.add_argument("--save-npz", default=None, help="also save per-frame predictions/labels (OUT_<split>.npz)")
+    ap.add_argument("--history", default=None, help="the checkpoint's training history (JSON, e.g. sft_B.yaml history): "
+                    "the past frames are sent to the server exactly as the dataset gives them to training")
     a = ap.parse_args()
+    hist = json.loads(a.history) if a.history else None
     rep = {"ckpt": a.ckpt, "h_exec": a.h_exec}
 
     # ---- normalization: checkpoint normalizer vs exact dataset stats
@@ -84,13 +88,20 @@ def main():
         rep["reference_error"] = repr(e)[:300]
 
     for split, root in [x for x in (("train", a.train), ("val", a.val)) if x[0] in a.splits.split(",")]:
-        ds = LeRobotDataset(repo_id="local/audit", root=root, delta_timestamps={"action": [i / 10 for i in range(50)]})
+        ds = LeRobotDataset(repo_id="local/audit", root=root, delta_timestamps=ovmm_model.history_delta_timestamps(
+            {"action": [i / 10 for i in range(50)]}, hist))
         idx, nav, names, st = sample(root, min(a.n, len(ds) // 2), 7 if split == "train" else 8)
         P, E, PAD, NAVF, SRV_REF = [], [], [], [], []
         for j, i in enumerate(idx):
             it = ds[int(i)]
-            imgs = {c: (it[f"observation.images.{c}"].permute(1, 2, 0).numpy() * 255).round().clip(0, 255).astype(np.uint8)
-                    for c in IO.CAMERA_MAP}
+            u8 = lambda x: (x.permute(1, 2, 0).numpy() * 255).round().clip(0, 255).astype(np.uint8)
+            if hist:                                             # stacked oldest ... current (ovmm_model.apply_history)
+                hx = it[f"observation.images.{hist['camera']}"]
+                it = {**it, f"observation.images.{hist['camera']}": hx[-1]}
+            imgs = {c: u8(it[f"observation.images.{c}"]) for c in IO.CAMERA_MAP}
+            if hist:
+                for j, k in enumerate(sorted(hist["offsets"], reverse=True)):
+                    imgs[f"{hist['camera']}_h{k}"] = u8(hx[j])
             req = {"cmd": "infer", "images": imgs, "state": it["observation.state"].numpy().astype(np.float32),
                    "task": it["task"], "seed": 1000 + int(i)}
             send_msg(sock, req)
