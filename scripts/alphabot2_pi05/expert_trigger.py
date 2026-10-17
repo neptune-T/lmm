@@ -6,7 +6,9 @@ expert is still far from where it stopped to reach.
 
 Per query (every --stride frames of each episode's navigate_to_object segment), first H_EXEC predicted steps:
   stop        mean |v| < 0.03 and mean |omega| < 0.05
-  arm_move    either arm's commanded xyz > 5 cm from the expert NAV (tucked) pose at any of the H_EXEC steps
+  arm_move    either arm's commanded xyz > ARM_DEV_M (15 cm) from the expert NAV pose at any of the H_EXEC steps:
+              reach-like (the expert's start-of-episode tuck stays within 6 cm, its reach..retract targets are
+              25-37 cm off). The raw offset ("dev") is saved per query so other thresholds can be re-scored offline.
   trigger     stop and arm_move
 Distance = |base xz - base xz at the last navigate_to_object frame| (the expert's stop point at the object).
 The expert's own labels on the same frames are scored too (must be ~0: sanity of the definition).
