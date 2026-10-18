@@ -24,3 +24,21 @@ and closed loop (CL) identically; CL exposure split by path state at each query;
   triggers are preceded by >= 1 m drift at least 50 steps earlier.
 - Must hold at 15 cm and not flip at 10 or 20 cm. Otherwise: INCONCLUSIVE, reported with the numbers; no
   attribution forced, and never both interventions at once.
+
+## 3. Matched-state perturbation (v2-B), written 2026-10-18 before any perturbation rollout
+Design: `scripts/alphabot2_habitat/perturb_plan.py` (20 units: 12 training-set eval units + 8 held-out v2 SFT-val
+episodes; 2 expert navigate_to_object states each, >= 3.5 m from the expert stop point; levels none / pos 0.25,
+0.5, 1.0 m lateral / yaw 15, 30, 60 deg; seeds 0, 1; matched noise across levels), `perturb_eval.py` (validated
+expert replay -> safe perturbation -> 400-step B rollout, fp32, H_exec 5), `perturb_analysis.py`. A replay error
+> 2 cm / 1 deg or an unsafe level is skipped and reported, never replaced.
+Primary outcome: false reach (far-NAV stop + arm > 15 cm) within the 400-step rollout; 10 / 20 cm sensitivity.
+- DEVIATION IS A MAIN CAUSE -> expert-corrected recovery data / DAgger pilot, if on at least one axis:
+  (a) Cochran-Armitage trend p < 0.05 with false reach increasing with the perturbation, AND
+  (b) largest level vs none, matched on (state, seed): more perturbed-only than none-only false reaches, sign p < 0.05, AND
+  (c) the none-level false-reach rate <= 1/2 of the largest level's;
+  holding at 15 cm and not reversing at 10 / 20 cm.
+- DEVIATION IS NOT THE MAIN CAUSE -> reconsider task-state representation, if: the none-level false-reach rate is
+  >= 2/3 of every perturbed level's rate on both axes AND no axis has a trend p < 0.05.
+- Otherwise INCONCLUSIVE (reported with the numbers; no forced attribution, never both interventions at once).
+Secondary (reported, not decisive): early false reach (< 100 steps), unified hazard, base-only stall, NAV progress,
+reached-within-1 m of the stop point, recovery rate, share of stall time explained by false reach.
