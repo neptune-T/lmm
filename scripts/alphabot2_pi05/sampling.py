@@ -13,6 +13,10 @@ phase_balanced (frame_meta.npz from ovmm_to_lerobot.py):
     right at |omega| 0.05) gets equal total weight, navigation mass unchanged -- replaces the implicit
     turn oversampling of the cruise downweight (sanity_v1 sampled 35 / 26 / 38 % with straight
     under-taught); turn_weight (optional) multiplies turning navigation frames afterwards.
+  * mixture (optional; recovery-data pilot): frames whose stage name starts with mixture.stage_prefix are zeroed
+    BEFORE any balancing (so the other frames keep exactly the weights they would have without them); afterwards the
+    mixture.anchor_stages (name -> relative weight, uniform within a name) get mixture.mass of the total probability
+    mass; every other prefixed stage stays at 0 (history / chunk-continuation context only).
 uniform: w = 1 (baseline config).
 Weights are normalized to mean 1.
 """
@@ -40,6 +44,10 @@ def weights(frame_meta: dict, cfg: dict) -> tuple[np.ndarray, dict]:
     arm, scene = np.asarray(frame_meta["arm"]), np.asarray(frame_meta["scene"])
     sw = cfg.get("stage_weight", {})
     w = np.array([float(sw.get(names[s], sw.get("default", 1.0))) for s in st])
+    mx = cfg.get("mixture")
+    is_mx = np.isin(st, [i for i, s in enumerate(names) if mx and s.startswith(mx.get("stage_prefix", "recovery_"))]) if mx \
+        else np.zeros(n, bool)
+    w[is_mx] = 0.0
     is_nav = np.isin(st, [i for i, s in enumerate(names) if s in NAV_STAGES])
     win = int(cfg.get("transition_window", 15))
     # steps to the nearest stage change (all changes / navigation<->manipulation changes), per episode
@@ -87,8 +95,18 @@ def weights(frame_meta: dict, cfg: dict) -> tuple[np.ndarray, dict]:
         if tw != 1.0:
             w[is_nav & (oc != 1)] *= tw
         nav_om = {k: float(w[is_nav & (oc == c)].sum() / max(1e-12, w[is_nav].sum())) for c, k in enumerate(("left", "straight", "right"))}
+    mx_info = {}
+    if mx:
+        anchors = mx["anchor_stages"]
+        aw = np.array([float(anchors.get(names[s], 0.0)) if is_mx[i] else 0.0 for i, s in enumerate(st)])
+        if aw.sum() > 0:
+            base = w[~is_mx].sum(); mass = float(mx["mass"])
+            w = np.where(is_mx, aw * (mass / (1 - mass)) * base / aw.sum(), w)
+        mx_info = {"mass_target": float(mx["mass"]), "mass_realized": float(w[is_mx].sum() / w.sum()), "frames": int(is_mx.sum()),
+                   "anchor_frames": int((aw > 0).sum()),
+                   "by_stage": {names[s]: float(w[is_mx & (st == s)].sum() / w.sum()) for s in np.unique(st[is_mx])}}
     w = w / w.mean()
-    info = {"mode": cfg.get("mode"), "frames": int(n), "cruise_fraction": float(cruise.mean()),
+    info = {"mode": cfg.get("mode"), "mixture": mx_info, "frames": int(n), "cruise_fraction": float(cruise.mean()),
             "nav_omega_class_mass": nav_om,
             "transition_fraction": float((d_navx <= win).mean()),
             "effective_mass_by_stage": {names[s]: float(w[st == s].sum() / w.sum()) for s in np.unique(st)},
