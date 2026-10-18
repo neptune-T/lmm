@@ -49,3 +49,25 @@ axis all have a valid rollout (pos and yaw analysed separately; no feasibility-s
 an axis with < 10 common (state, seed) pairs is INCONCLUSIVE. Effective / feasible n per level, the side used for
 lateral pushes, and the within-pair matched slopes (false reach, stall, base-only stall, progress) are always
 reported; the all-available analysis is secondary. Infeasible levels are skipped, never replaced.
+
+## 4. DAgger recovery SFT pilot (user-approved 2026-10-18), written before any pilot training
+Data: expert-recovery demonstrations re-recorded with full observations from the 18 TRAIN-unit roots only
+(`recovery_collect.py`; held-out roots refused in code), each with B's real 15-step pre-root prefix (history
+context, sampling weight 0); anchors = recovery_navigate + recovery_reach_onset (first 15 frames of the arrival
+switch); tuck / post-arrival manipulation weight 0. Normalization frozen to v2's exact stats (B's).
+Arms, both initialised from v2-B best (`/dev/shm/lmm_runtime/sft/v2B/best`, sha256 recorded before/after, never
+modified), identical config, seed 1000, budget 2000 steps x effective batch 16, lr 5e-6 peak (100 warmup) cosine to
+2.5e-6, B's loss (w=1) and history:
+  CONTROL     v2 train data only, B's sampler
+  RECOVERY    v2 train + recovery episodes; v2 frames keep B's relative weights; recovery anchors get 20 % mass
+Evaluated checkpoint: `last` of each arm (fixed budget; v2-val loss contains no recovery states, so best-by-val
+selection would be biased). fp32 serving, H_exec 5.
+PRIMARY: 18 HELD-OUT recovery roots x 2 noise seeds (36 paired continuations per arm, 600 steps, same roots / seeds as
+the B baseline): approach (target <= 1 m), false reach, recovery success (approach without a prior false reach).
+"Recovery data improves closed-loop recovery" if RECOVERY beats CONTROL on approach in the (root, seed)-paired
+comparison with exact sign test p < 0.05, and false reach is not higher; otherwise "not shown" (an improvement with
+p >= 0.05 is reported as a trend only).
+SECONDARY: training-unit roots (in-distribution of the recovery data; reported separately, never pooled with held-out);
+frozen normal-init OVMM-val (30 units x 2 seeds) + training set (20) funnel incl. full success_count/eval_count, run
+after the root eval, to check that a local recovery gain does not leave full success at 0 unnoticed or regress find.
+Expansion of collection, task-progress heads, RL or FP4 are out of scope until the results are reviewed.
