@@ -1,7 +1,8 @@
 """Job plan for perturb_eval.py (deterministic, written before any rollout).
 
 Start states: expert navigate_to_object states of (a) training-set eval units (the policy trained on them) and
-(b) held-out v2 SFT-val episodes, sorted, first N_TRAIN / N_HELDOUT that qualify. Per unit two states: the 30 %
+(b) held-out v2 SFT-val episodes, sorted, first N_TRAIN / N_HELDOUT that qualify, at most one seed-bank replica
+per base OVMM episode. Per unit two states: the 30 %
 and 60 % quantiles of the navigate_to_object frames that are >= MIN_FAR_M from the expert's stop point (end of
 navigate_to_object), so a 1 m lateral push stays far-NAV. Levels: none; pos 0.25 / 0.5 / 1.0 m; yaw 15 / 30 / 60
 deg. Seeds 0, 1. Every (state, seed) gets every level (matched).
@@ -49,9 +50,11 @@ def main():
     want = {"train_unit": a.n_train, "heldout": a.n_heldout}
     picked, jobs = [], []
     for group, units in pools.items():
-        n = 0
+        n, seen_ep = 0, set()
         for u in units:
             ep, rep = u.split("#")
+            if ep in seen_ep:                                            # one replica per base episode (diversity)
+                continue
             src = Path(a.collect) / "episodes" / f"{ep}_r{rep}"
             if not (src / "metadata.npz").exists():
                 continue
@@ -59,7 +62,7 @@ def main():
             if len(S) < len(quant):
                 continue
             picked.append({"unit": u, "group": group, "source": str(src), "states": S})
-            n += 1
+            seen_ep.add(ep); n += 1
             if n >= want[group]:
                 break
     for p in picked:

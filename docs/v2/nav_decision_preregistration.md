@@ -27,7 +27,8 @@ and closed loop (CL) identically; CL exposure split by path state at each query;
 
 ## 3. Matched-state perturbation (v2-B), written 2026-10-18 before any perturbation rollout
 Design: `scripts/alphabot2_habitat/perturb_plan.py` (20 units: 12 training-set eval units + 8 held-out v2 SFT-val
-episodes; 2 expert navigate_to_object states each, >= 3.5 m from the expert stop point; levels none / pos 0.25,
+episodes, at most one replica per base episode (amended before any rollout: the first plan had 5 replicas of one
+held-out episode); 2 expert navigate_to_object states each, >= 3.5 m from the expert stop point; levels none / pos 0.25,
 0.5, 1.0 m lateral / yaw 15, 30, 60 deg; seeds 0, 1; matched noise across levels), `perturb_eval.py` (validated
 expert replay -> safe perturbation -> 400-step B rollout, fp32, H_exec 5), `perturb_analysis.py`. A replay error
 > 2 cm / 1 deg or an unsafe level is skipped and reported, never replaced.
