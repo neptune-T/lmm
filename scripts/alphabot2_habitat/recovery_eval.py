@@ -36,7 +36,9 @@ HISTORY = json.loads(os.environ["HISTORY"]) if os.environ.get("HISTORY") else No
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"), ("full", "ovmm_place_success"))
 plan = json.load(open(os.environ["ROOTS"]))
-jobs = [(r, m) for r in plan["roots"] for m in ("expert", "policy_orig", "policy_alt")][WK::NW]
+MODES = tuple(os.environ.get("MODES", "expert,policy_orig,policy_alt").split(","))
+POLICY_CKPT = os.environ.get("POLICY_CKPT")                             # recorded for provenance (the server loads it)
+jobs = [(r, m) for r in plan["roots"] for m in MODES][WK::NW]
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split="train")
 sock = socket.create_connection(("127.0.0.1", int(os.environ.get("PORT", "5600"))))
 send_msg(sock, {"cmd": "ping"}); srv = recv_msg(sock)
@@ -151,7 +153,7 @@ for root, mode in jobs:
         continue
     rec = {"job": jid, "mode": mode, **{k: root[k] for k in ("root_id", "category", "unit", "base_episode", "group", "t", "seed", "r",
                                                             "job", "trace", "trace_sha256", "source", "trigger_step")}}
-    rec["job"] = jid; rec["source_job"] = root["job"]
+    rec["job"] = jid; rec["source_job"] = root["job"]; rec["policy_ckpt"] = POLICY_CKPT
     t0 = time.time()
     try:
         ex, past, err, orig_pose = reconstruct(root)
