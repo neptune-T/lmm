@@ -43,3 +43,9 @@ Primary outcome: false reach (far-NAV stop + arm > 15 cm) within the 400-step ro
 - Otherwise INCONCLUSIVE (reported with the numbers; no forced attribution, never both interventions at once).
 Secondary (reported, not decisive): early false reach (< 100 steps), unified hazard, base-only stall, NAV progress,
 reached-within-1 m of the stop point, recovery rate, share of stall time explained by false reach.
+Amendment (2026-10-18, after the 14-job engineering pilot, before the 560-job run): conditions (a)-(c) and the
+"not the main cause" rule are evaluated PER AXIS on the COMMON SUBSET of (state, seed) whose four levels of that
+axis all have a valid rollout (pos and yaw analysed separately; no feasibility-selection bias between levels);
+an axis with < 10 common (state, seed) pairs is INCONCLUSIVE. Effective / feasible n per level, the side used for
+lateral pushes, and the within-pair matched slopes (false reach, stall, base-only stall, progress) are always
+reported; the all-available analysis is secondary. Infeasible levels are skipped, never replaced.

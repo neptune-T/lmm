@@ -10,9 +10,12 @@ navigate_to_object path (stop point = its last pose); queries every H_EXEC steps
   reached_stop_1m    came within 1 m of the expert stop point
   recovery           after a false-reach onset: >= RECOVER_STEPS consecutive moving steps with the arm back
                      within TUCK_MAX, followed by >= 0.5 m more progress than at the onset
-Per level: rates (Wilson 95 %), means; matched vs "none" on the same (state, seed): worse / better / tie, exact
-sign test, bootstrap 95 % CI of the mean difference; per axis (pos, yaw): Cochran-Armitage trend test of
-false_reach over (none, small, medium, large). T in 10 / 15 / 20 cm.
+PRIMARY analysis, per axis separately (pos, yaw), on the COMMON SUBSET of (state, seed) whose four levels of
+that axis (none, small, medium, large) all have a valid rollout (no feasibility-selection bias between levels):
+per-level rates (Wilson 95 %) and means, Cochran-Armitage trend of false_reach, matched vs "none" (perturbed-only /
+none-only, exact sign test; bootstrap 95 % CI of the mean difference), and a within-pair matched trend: per (state,
+seed) the least-squares slope of the metric over level index 0..3, sign test on the slopes + bootstrap CI of the
+mean slope. SECONDARY: the same on all available rollouts (feasible n per level reported). T in 10 / 15 / 20 cm.
     perturb_analysis.py --run DIR --expert-pose stall_diag.json --out OUT.json
 """
 import argparse, glob, json, math, os
@@ -87,6 +90,50 @@ def cochran_armitage(ks, ns):
     return {"z": round(zz, 3) if zz is not None else None, "p": round(math.erfc(abs(zz) / math.sqrt(2)), 4) if zz is not None else None}
 
 
+METRICS = (("false_reach", "higher_worse"), ("early_false_reach", "higher_worse"), ("stall_steps", "higher_worse"),
+           ("base_only_stall_steps", "higher_worse"), ("progress_m", "lower_worse"))
+
+
+def primary(R, Ls, rng):
+    """per-axis analysis on the (state, seed) sets where every level of the axis has a valid rollout"""
+    keys = sorted({k[:3] for k in R if all((*k[:3], L) in R for L in Ls)})
+    out = {"n_common": len(keys), "levels": {}, "trend_false_reach": None, "matched_vs_none": {}, "matched_slope": {}}
+    if not keys:
+        return out
+    for L in Ls:
+        v = [R[(*k, L)] for k in keys]
+        fr = sum(m["false_reach"] for m in v); on = [m for m in v if m["false_reach"]]
+        out["levels"][L] = {"n": len(v), "false_reach": fr, "rate": round(fr / len(v), 3), "rate_ci95": wilson(fr, len(v)),
+                            "early_false_reach": sum(m["early_false_reach"] for m in v),
+                            "hazard": round(sum(m["events"] for m in v) / max(1, sum(m["eligible"] for m in v)), 5),
+                            "stall_steps_mean": round(float(np.mean([m["stall_steps"] for m in v])), 1),
+                            "base_only_stall_steps_mean": round(float(np.mean([m["base_only_stall_steps"] for m in v])), 1),
+                            "stall_share_false_reach": round(sum(m["stall_false_reach_steps"] for m in v) / max(1, sum(m["stall_steps"] for m in v)), 3),
+                            "progress_m_mean": round(float(np.mean([m["progress_m"] for m in v])), 2),
+                            "reached_stop_1m": sum(m["reached_stop_1m"] for m in v),
+                            "recovered": sum(bool(m["recovered"]) for m in on), "recovery_of": len(on)}
+    ks = [out["levels"][L]["false_reach"] for L in Ls]; ns = [out["levels"][L]["n"] for L in Ls]
+    out["trend_false_reach"] = {"false_reach": ks, "n": ns, **cochran_armitage(ks, ns)}
+    for L in Ls[1:]:
+        pr = [(R[(*k, L)], R[(*k, "none")]) for k in keys]
+        w = sum(x["false_reach"] and not y["false_reach"] for x, y in pr); b = sum(y["false_reach"] and not x["false_reach"] for x, y in pr)
+        res = {"false_reach": {"perturbed_only": w, "none_only": b, "sign_test_p": sign_p(w, b)}}
+        for k in ("progress_m", "stall_steps", "base_only_stall_steps"):
+            dd = np.array([x[k] - y[k] for x, y in pr], float)
+            boot = [dd[rng.integers(0, len(dd), len(dd))].mean() for _ in range(5000)]
+            res[k] = {"mean_diff": round(float(dd.mean()), 3), "ci95": [round(float(np.percentile(boot, 2.5)), 3), round(float(np.percentile(boot, 97.5)), 3)]}
+        out["matched_vs_none"][L] = res
+    x = np.arange(len(Ls), dtype=float); x -= x.mean()
+    for met, _ in METRICS:
+        sl = np.array([float(np.dot(x, [float(R[(*k, L)][met]) for L in Ls]) / np.dot(x, x)) for k in keys])
+        pos, neg = int((sl > 1e-9).sum()), int((sl < -1e-9).sum())
+        boot = [sl[rng.integers(0, len(sl), len(sl))].mean() for _ in range(5000)]
+        out["matched_slope"][met] = {"positive": pos, "negative": neg, "zero": len(sl) - pos - neg, "sign_test_p": sign_p(pos, neg),
+                                     "mean_slope_per_level": round(float(sl.mean()), 4),
+                                     "ci95": [round(float(np.percentile(boot, 2.5)), 4), round(float(np.percentile(boot, 97.5)), 4)]}
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="dir with perturb_w*.jsonl and traces/")
@@ -107,6 +154,11 @@ def main():
         rep["applied"][L] = {"n": len(p), "moved_m_med": round(float(np.median([x["moved_m"] for x in p])), 3),
                              "dyaw_deg_abs_med": round(float(np.median([abs(x["dyaw_deg"]) for x in p])), 2),
                              "minus_side": sum(x["sign"] < 0 for x in p)}
+    rep["feasible_by_level"] = {L: {"planned": sum(r["level"] == L for r in rows),
+                                    "valid": sum(r["level"] == L for r in ok),
+                                    "unsafe": sum(r["level"] == L and str(r.get("skipped", "")).startswith('{"unsafe"') for r in rows),
+                                    "minus_side": sum(r["level"] == L and r["perturbation"]["sign"] < 0 for r in ok)}
+                                for L in sorted({r["level"] for r in rows})}
     rng = np.random.default_rng(0)
     for T in THRESHOLDS:
         R = {}
@@ -144,11 +196,20 @@ def main():
         for ax, Ls in AXES.items():
             ks = [out["levels"].get(L, {}).get("false_reach", 0) for L in Ls]; ns = [out["levels"].get(L, {}).get("n", 0) for L in Ls]
             out["trend"][ax] = {"levels": Ls, "false_reach": ks, "n": ns, **cochran_armitage(ks, ns)}
+        out["primary_common_subset"] = {ax: primary(R, Ls, rng) for ax, Ls in AXES.items()}
         rep["by_threshold"][f"{T:.2f}"] = out
     Path(a.out).write_text(json.dumps(rep, indent=1, default=str))
-    print(json.dumps({k: rep[k] for k in ("rows", "skipped", "engineering_errors", "replay_err_max", "applied")}))
+    print(json.dumps({k: rep[k] for k in ("rows", "skipped", "engineering_errors", "replay_err_max", "applied", "feasible_by_level")}))
     for T, o in rep["by_threshold"].items():
-        print(f"== T={T}")
+        print(f"== T={T}  PRIMARY (common subset per axis)")
+        for ax, pr in o["primary_common_subset"].items():
+            print(f"   [{ax}] n_common={pr['n_common']} trend {pr['trend_false_reach']}")
+            for L, x in pr["levels"].items():
+                print(f"      {L:8s} {json.dumps(x)}")
+            for L, m in pr["matched_vs_none"].items():
+                print(f"      matched {L:8s} {json.dumps(m)}")
+            print(f"      slopes {json.dumps(pr['matched_slope'])}")
+        print(f"== T={T}  SECONDARY (all available)")
         for L, x in o["levels"].items():
             print(f"   {L:8s} n={x['n']:3d} false_reach {x['false_reach']:3d} ({x['rate']}, {x['rate_ci95']}) early {x['early_false_reach']:3d} hazard {x['hazard']} "
                   f"stall_mean {x['stall_steps_mean']} base_only {x['base_only_stall_steps_mean']} FRshare {x['stall_share_false_reach']} "
