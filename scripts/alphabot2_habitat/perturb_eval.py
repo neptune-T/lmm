@@ -63,9 +63,24 @@ def set_pose(rob, R, p):
     rob.update()
 
 
+def head_cam():
+    """world translation of the head camera sensor node (follows the robot after rob.update())"""
+    for name, s in env.sim._sensors.items():
+        if "head" in name and "rgb" in name:
+            return np.array(s._sensor_object.node.absolute_translation)
+    return None
+
+
+def psnr(a, b):
+    m = float(np.mean((a.astype(np.float64) - b.astype(np.float64)) ** 2))
+    return 99.0 if m == 0 else 10 * math.log10(255.0 ** 2 / m)
+
+
 def perturb(level):
-    """apply a safe perturbation; returns the record (or raises ValueError('unsafe'))"""
+    """apply a safe perturbation; returns the record (or raises ValueError('unsafe')). Also checks that the
+    rendered view follows the teleported base (head camera shift, head image change)."""
     rob = HE.robot(env); pf = env.sim.pathfinder
+    img_pre, cam_pre = observe()["camera_top"], head_cam()
     T0 = rob.sim_obj.transformation
     R0, p0 = T0.rotation(), T0.translation
     xz0, yaw0, _ = NAV.pose2d(env)
@@ -89,8 +104,12 @@ def perturb(level):
         tried.append({"sign": sign, "navigable_same_island": nav_ok, "contacts": len(coll)})
         if nav_ok and not coll:
             xz1, yaw1, _ = NAV.pose2d(env)
+            img_post, cam_post = observe()["camera_top"], head_cam()
             return {"sign": sign, "tried": tried, "moved_m": float(np.linalg.norm(xz1 - xz0)),
-                    "dyaw_deg": float(math.degrees(NAV.wrap(yaw1 - yaw0)))}
+                    "dyaw_deg": float(math.degrees(NAV.wrap(yaw1 - yaw0))),
+                    "view": {"head_psnr_pre_post": round(psnr(img_pre, img_post), 2),
+                             "head_cam_shift_m": float(np.linalg.norm(cam_post - cam_pre)) if cam_pre is not None else None,
+                             "history_init": "post-perturbation first observation repeated (episode-start convention)"}}
         set_pose(rob, R0, p0)                                             # undo before the other side
     raise ValueError(json.dumps({"unsafe": tried}))
 
