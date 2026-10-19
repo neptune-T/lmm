@@ -163,6 +163,18 @@ def msft_line():
 
 
 pt, ph, pv_ = paired(m_tr, v_tr_m), paired(m_ho, v_ho_m), paired(m_va, v_va_m)
+prereg_txt = ""
+if dv and dm:
+    def rate(d, k):
+        a = sum(d[g][k][0] for g in ("train_unit", "heldout")); b = sum(d[g][k][1] for g in ("train_unit", "heldout"))
+        return a, b
+    (mp, mpn), (vp, vpn) = rate(dm, "place"), rate(dv, "place")
+    (mg, mgn), (vg, vgn) = rate(dm, "grasp"), rate(dv, "grasp")
+    prereg_txt = (f"<p class='small'><b>Pre-registered rule</b> (docs/v2/pa_baseline.md §2): place phase from receptacle arrival ≥ 25% "
+                  f"and grasp not down by more than 10 points. M-SFT place {mp}/{mpn} ({pct(mp, mpn)}) vs v2-B {vp}/{vpn} ({pct(vp, vpn)}); "
+                  f"grasp {mg}/{mgn} ({pct(mg, mgn)}) vs {vg}/{vgn} ({pct(vg, vgn)}). The rule is met, but it is uninformative: it was "
+                  f"written from the first 7 rows, when v2-B looked near 0%, and v2-B itself already exceeds the threshold. "
+                  f"Read the paired full-task numbers above instead.</p>")
 pair_txt = " · ".join(f"{lab}: M-SFT-only {x[0]}, v2-B-only {x[1]}, both {x[2]} of {x[3]} pairs (sign test p = {x[4]:.2f})"
                       for lab, x in (("train", pt), ("held-out", ph), ("OVMM-val", pv_)) if x[3])
 msft_section = ""
@@ -171,6 +183,7 @@ if m_tr or dm:
 <p>Continuation of v2-B (unchanged; its sha256 was verified after training) on the same v2 data with navigation, tuck and settle frames at sampling weight 0; place stages up-weighted. 3000 steps × 16 (48k samples, 30% of v2-B's budget), lr 1e-5 → 2.5e-6, evaluated checkpoint <code>last</code> (fixed budget, pre-registered). Its NAV is irrelevant here because the planner navigates. Interrupted once by the container restart and resumed from its step-2000 checkpoint.</p>
 <p>PA-OG + base lock, paired with v2-B on the same units and seeds: train <b>{frac(m_tr)}</b> vs {frac(v_tr_m)} · held-out <b>{frac(m_ho)}</b> vs {frac(v_ho_m)} · OVMM-val <b>{frac(m_va)}</b> vs {frac(v_va_m)}. Paired on identical (unit, seed): {E(pair_txt)}. The train gain is a trend, not significant at this n. Per-pass rows are in the table above.</p>
 {diag_table("manip_arrival_msft", "M-SFT v1 from expert arrival (same 240 jobs)")}
+{prereg_txt}
 </section>"""
 
 H = f"""<title>AlphaBot2 PA-OG Baseline</title>
