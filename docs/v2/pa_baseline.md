@@ -43,3 +43,9 @@ Sets: the frozen v2 eval sets (OVMM-val 30 units, split val; train set 20 units)
 seed of the policy; the planner is deterministic). Success is reported as success_count / eval_count per seed
 pass, with videos and traces of every success. A success is "replayable" when the recorded episode is re-run from the
 same unit and seed and succeeds again.
+
+Amendment (2026-10-19 ~12:40, after the first PA smoke episode, before any PA success count): contract option
+BASE_LOCK=1 ("PA-OG + base lock"): during MANIP1 / MANIP2 the planner owns the base, the policy's base.v / base.omega
+are replaced by 0 (arms + grippers unchanged; raw v / omega traced). Motivation: in the smoke episode the policy began
+the place reach, then drove away with the object for the remaining 500 steps (NAV / manipulation mode confusion).
+Both variants are reported, labelled; neither uses privileged information in the policy or the switches.

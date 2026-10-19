@@ -45,6 +45,9 @@ MANIP1_MAX, MANIP2_MAX = int(os.environ.get("MANIP1_MAX", "600")), int(os.enviro
 SETTLE_STEPS = int(os.environ.get("SETTLE_STEPS", "120"))
 HOLD_GAP, TUCK_RAD, HOLD_K = 0.05, float(os.environ.get("TUCK_RAD", "0.30")), 3
 FRAME_EVERY = int(os.environ.get("FRAME_EVERY", "2"))
+# BASE_LOCK=1: during MANIP phases the planner owns the base -- the policy's base.v / base.omega (dims 16, 17) are
+# replaced by 0 before execution (arms + grippers executed unchanged); the policy's raw v / omega are traced.
+BASE_LOCK = os.environ.get("BASE_LOCK", "0") == "1"
 WK, NW = int(os.environ.get("WORKER", 0)), int(os.environ.get("NWORKERS", 1))
 HISTORY = json.loads(os.environ["HISTORY"]) if os.environ.get("HISTORY") else None
 if HISTORY:
@@ -94,7 +97,7 @@ class Run:
         self.phase = "nav1"
         self.t = 0
         self.head = []                                    # head frame per step (history for the first policy query)
-        self.tr = {k: [] for k in ("phase", "pose", "act", "held", "frames", "frame_steps")}
+        self.tr = {k: [] for k in ("phase", "pose", "act", "held", "frames", "frame_steps", "raw_vw")}
         self.grip_cmd = {"left": 0.0, "right": 0.0}
         self.ever = {n: False for n, _ in FUNNEL}
         self.grasp_R = None
@@ -166,7 +169,10 @@ def policy_phase(run, task, seed0, limit, done_fn):
             if "error" in r:
                 raise RuntimeError("policy server: " + r["error"])
             chunk, k = r["actions"], 0
-        a = np.asarray(chunk[k], float)
+        a = np.asarray(chunk[k], float).copy()
+        run.tr["raw_vw"].append([float(a[16]), float(a[17])])
+        if BASE_LOCK:
+            a[16] = a[17] = 0.0
         joint, _ = ex.lower(a)
         HE.step18(env, joint)
         run.grip_cmd = {"left": float(a[C.CART_LEFT_GRIPPER]), "right": float(a[C.CART_RIGHT_GRIPPER])}
@@ -256,14 +262,14 @@ def episode(unit, rec):
     return run
 
 
-fn = f"{OUT}/pa_w{WK:02d}_s{SEED_OFFSET}.jsonl"
+fn = f"{OUT}/pa_w{WK:02d}_s{SEED_OFFSET}{'_lock' if BASE_LOCK else ''}.jsonl"
 done = {json.loads(l)["unit"] for l in open(fn)} if os.path.exists(fn) else set()
 for unit in units:
     if unit in done:
         continue
-    rec = {"unit": unit, "split": SPLIT, "seed_offset": SEED_OFFSET, "label": "PA-OG (planner-assisted, oracle goal)",
+    rec = {"unit": unit, "split": SPLIT, "seed_offset": SEED_OFFSET, "label": "PA-OG (planner-assisted, oracle goal)" + (" + base lock in manipulation" if BASE_LOCK else ""),
            "h_exec": EXEC, "policy_ckpt": os.environ.get("POLICY_CKPT"),
-           "contract": {"MANIP1_MAX": MANIP1_MAX, "MANIP2_MAX": MANIP2_MAX, "SETTLE_STEPS": SETTLE_STEPS, "HOLD_GAP": HOLD_GAP,
+           "contract": {"BASE_LOCK": BASE_LOCK, "MANIP1_MAX": MANIP1_MAX, "MANIP2_MAX": MANIP2_MAX, "SETTLE_STEPS": SETTLE_STEPS, "HOLD_GAP": HOLD_GAP,
                         "TUCK_RAD": TUCK_RAD, "HOLD_K": HOLD_K}}
     t0 = time.time()
     run = None
@@ -276,7 +282,7 @@ for unit in units:
     except Exception as e:
         rec["engineering_error"] = repr(e)[:300]; rec["tb"] = traceback.format_exc()[-1500:]
     if run is not None and run.tr["pose"]:
-        jid = f"{unit.replace('#', '_r')}_s{SEED_OFFSET}"
+        jid = f"{unit.replace('#', '_r')}_s{SEED_OFFSET}{'_lock' if BASE_LOCK else ''}"
         tmp = f"/dev/shm/patrace_{WK}_{jid}.npz"
         fr = np.asarray(run.tr.pop("frames"), np.uint8).reshape(-1, 120, 480, 3)
         np.savez_compressed(tmp, frames=fr, **{k: np.asarray(v) for k, v in run.tr.items()})
