@@ -55,6 +55,17 @@ if HISTORY:
 FUNNEL = (("find", "ovmm_find_object_phase_success"), ("grasp", "ovmm_pick_object_phase_success"),
           ("carry", "ovmm_find_recep_phase_success"), ("place", "ovmm_place_object_phase_success"), ("full", "ovmm_place_success"))
 TUCK = {s: np.array(v) for s, v in NAV_TUCK.items()}
+# every executed JointMobileAction18 (planner and policy alike) is recorded for open-loop replay (pa_replay.py)
+JOINTS = []
+_step18 = HE.step18
+
+
+def _rec_step18(env_, joint18):
+    JOINTS.append(np.asarray(joint18, np.float32).reshape(18).copy())
+    return _step18(env_, joint18)
+
+
+HE.step18 = _rec_step18
 units = [u for u in os.environ["EPISODES"].replace("\n", ",").split(",") if u][WK::NW]
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=SPLIT)
 sock = socket.create_connection(("127.0.0.1", int(os.environ.get("PORT", "5600"))))
@@ -193,6 +204,7 @@ def policy_phase(run, task, seed0, limit, done_fn):
 def episode(unit, rec):
     ep_id, rep = HE.parse_unit(unit)
     HE.reset_to(env, ep_id, rep)
+    JOINTS.clear()
     ep = env.current_episode
     task = IO.instruction(ep.object_category, ep.start_recep_category, ep.goal_recep_category)
     rec.update({"scene": ep.scene_id.split("/")[-1].split(".")[0], "object": ep.object_category, "instruction": task,
@@ -285,7 +297,8 @@ for unit in units:
         jid = f"{unit.replace('#', '_r')}_s{SEED_OFFSET}{'_lock' if BASE_LOCK else ''}"
         tmp = f"/dev/shm/patrace_{WK}_{jid}.npz"
         fr = np.asarray(run.tr.pop("frames"), np.uint8).reshape(-1, 120, 480, 3)
-        np.savez_compressed(tmp, frames=fr, **{k: np.asarray(v) for k, v in run.tr.items()})
+        np.savez_compressed(tmp, frames=fr, joint18=np.asarray(JOINTS, np.float32).reshape(-1, 18),
+                            **{k: np.asarray(v) for k, v in run.tr.items()})
         shutil.copy(tmp, f"{OUT}/traces/{jid}.npz"); os.remove(tmp); rec["trace_out"] = f"{OUT}/traces/{jid}.npz"
     rec["wall_s"] = round(time.time() - t0, 1)
     with open(fn, "a") as f:
