@@ -186,7 +186,9 @@ def outcomes(j, tr, ev, held0):
 
 
 fn = f"{OUT}/manip_w{WK:02d}.jsonl"
-done = {json.loads(l)["job"] for l in open(fn)} if os.path.exists(fn) else set()
+# jobs finished by ANY worker file count as done (a resume may use a different NWORKERS partition)
+import glob  # noqa: E402
+done = {json.loads(l)["job"] for f in glob.glob(f"{OUT}/manip_w*.jsonl") for l in open(f)}
 for j in jobs:
     jid = job_id(j)
     if jid in done:
