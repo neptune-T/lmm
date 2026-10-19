@@ -1,0 +1,1866 @@
+{
+ "passes": [
+  {
+   "dir": "pa_msft",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft/msft_v1/last",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 18,
+    "carry": 15,
+    "place": 8,
+    "full": 8
+   },
+   "end": {
+    "manip2_timeout": 10,
+    "manip2_condition": 5,
+    "manip1_timeout": 5
+   },
+   "successes": [
+    {
+     "unit": "10064#0",
+     "steps": 1725,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/10064_r0_s0_lock.npz"
+    },
+    {
+     "unit": "14956#0",
+     "steps": 1435,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/14956_r0_s0_lock.npz"
+    },
+    {
+     "unit": "1019#0",
+     "steps": 756,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/1019_r0_s0_lock.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1177,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/16496_r0_s0_lock.npz"
+    },
+    {
+     "unit": "20840#0",
+     "steps": 1712,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/20840_r0_s0_lock.npz"
+    },
+    {
+     "unit": "21905#0",
+     "steps": 2251,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/21905_r0_s0_lock.npz"
+    },
+    {
+     "unit": "23522#0",
+     "steps": 1177,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/23522_r0_s0_lock.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 1073,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/13011_r0_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "14956#0",
+    "2002#0",
+    "25964#0",
+    "1019#0",
+    "16496#0",
+    "20840#0",
+    "28316#0",
+    "11037#0",
+    "17364#0",
+    "21905#0",
+    "12030#0",
+    "17858#0",
+    "23522#0",
+    "13011#0",
+    "18992#0",
+    "24014#0",
+    "13991#0",
+    "19897#0",
+    "24890#0"
+   ]
+  },
+  {
+   "dir": "pa_msft",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 1,
+   "ckpt": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft/msft_v1/last",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 19,
+    "carry": 13,
+    "place": 9,
+    "full": 7
+   },
+   "end": {
+    "manip2_timeout": 9,
+    "manip2_condition": 4,
+    "manip1_timeout": 7
+   },
+   "successes": [
+    {
+     "unit": "10064#0",
+     "steps": 1726,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/10064_r0_s1_lock.npz"
+    },
+    {
+     "unit": "14956#0",
+     "steps": 1433,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/14956_r0_s1_lock.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1173,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/16496_r0_s1_lock.npz"
+    },
+    {
+     "unit": "11037#0",
+     "steps": 1411,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/11037_r0_s1_lock.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 1149,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/13011_r0_s1_lock.npz"
+    },
+    {
+     "unit": "18992#0",
+     "steps": 822,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/18992_r0_s1_lock.npz"
+    },
+    {
+     "unit": "24014#0",
+     "steps": 983,
+     "trace": "/workspace/runtime/runs/v2/pa_msft/traces/24014_r0_s1_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "14956#0",
+    "2002#0",
+    "25964#0",
+    "1019#0",
+    "16496#0",
+    "20840#0",
+    "28316#0",
+    "11037#0",
+    "17364#0",
+    "21905#0",
+    "12030#0",
+    "17858#0",
+    "23522#0",
+    "13011#0",
+    "18992#0",
+    "24014#0",
+    "13991#0",
+    "19897#0",
+    "24890#0"
+   ]
+  },
+  {
+   "dir": "pa_msft_heldout",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft/msft_v1/last",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 19,
+    "grasp": 5,
+    "carry": 2,
+    "place": 1,
+    "full": 1
+   },
+   "end": {
+    "manip1_timeout": 18,
+    "manip2_timeout": 2
+   },
+   "successes": [
+    {
+     "unit": "12651#2",
+     "steps": 1253,
+     "trace": "/workspace/runtime/runs/v2/pa_msft_heldout/traces/12651_r2_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "10263#0",
+    "12735#0",
+    "25923#0",
+    "32953#0",
+    "10836#0",
+    "17694#0",
+    "26172#0",
+    "3430#0",
+    "11502#0",
+    "1783#0",
+    "28898#0",
+    "12062#0",
+    "18583#0",
+    "31016#3",
+    "12258#0",
+    "20953#0",
+    "31969#0",
+    "12651#2",
+    "21494#0",
+    "32926#1"
+   ]
+  },
+  {
+   "dir": "pa_msft_val",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "val",
+   "seed": 0,
+   "ckpt": "/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/lmm_runtime/sft/msft_v1/last",
+   "eval_count": 30,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 27,
+    "grasp": 16,
+    "carry": 5,
+    "place": 1,
+    "full": 1
+   },
+   "end": {
+    "manip1_timeout": 25,
+    "manip2_condition": 3,
+    "manip2_timeout": 2
+   },
+   "successes": [
+    {
+     "unit": "516#0",
+     "steps": 1352,
+     "trace": "/workspace/runtime/runs/v2/pa_msft_val/traces/516_r0_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "1093#0",
+    "150#0",
+    "276#0",
+    "516#0",
+    "799#0",
+    "1093#1",
+    "150#1",
+    "276#1",
+    "516#1",
+    "799#1",
+    "1093#2",
+    "150#2",
+    "276#2",
+    "516#2",
+    "799#2",
+    "14#0",
+    "251#0",
+    "452#0",
+    "581#0",
+    "810#0",
+    "14#1",
+    "251#1",
+    "452#1",
+    "581#1",
+    "810#1",
+    "14#2",
+    "251#2",
+    "452#2",
+    "581#2",
+    "810#2"
+   ]
+  },
+  {
+   "dir": "pa_repro",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 7,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 7,
+    "grasp": 6,
+    "carry": 4,
+    "place": 3,
+    "full": 3
+   },
+   "end": {
+    "manip2_condition": 1,
+    "manip2_timeout": 3,
+    "manip1_timeout": 3
+   },
+   "successes": [
+    {
+     "unit": "10064#0",
+     "steps": 1522,
+     "trace": "/workspace/runtime/runs/v2/pa_repro/traces/10064_r0_s0_lock.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 1124,
+     "trace": "/workspace/runtime/runs/v2/pa_repro/traces/13011_r0_s0_lock.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1265,
+     "trace": "/workspace/runtime/runs/v2/pa_repro/traces/16496_r0_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "13011#0",
+    "14956#0",
+    "17858#0",
+    "21905#0",
+    "20840#0",
+    "16496#0"
+   ]
+  },
+  {
+   "dir": "pa_smoke_v2B",
+   "label": "PA-OG (planner-assisted, oracle goal)",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 6,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 6,
+    "grasp": 5,
+    "carry": 3,
+    "place": 1,
+    "full": 1
+   },
+   "end": {
+    "manip2_timeout": 2,
+    "manip1_timeout": 4
+   },
+   "successes": [
+    {
+     "unit": "13011#0",
+     "steps": 1095,
+     "trace": "/workspace/runtime/runs/v2/pa_smoke_v2B/traces/13011_r0_s0.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "11037#0",
+    "13011#0",
+    "1019#0",
+    "12030#0",
+    "13991#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 19,
+    "carry": 14,
+    "place": 7,
+    "full": 7
+   },
+   "end": {
+    "manip2_condition": 7,
+    "manip2_timeout": 6,
+    "manip1_timeout": 7
+   },
+   "successes": [
+    {
+     "unit": "10064#0",
+     "steps": 1522,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/10064_r0_s0_lock.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 1094,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/13011_r0_s0_lock.npz"
+    },
+    {
+     "unit": "17858#0",
+     "steps": 1177,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/17858_r0_s0_lock.npz"
+    },
+    {
+     "unit": "20840#0",
+     "steps": 1688,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/20840_r0_s0_lock.npz"
+    },
+    {
+     "unit": "14956#0",
+     "steps": 1614,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/14956_r0_s0_lock.npz"
+    },
+    {
+     "unit": "21905#0",
+     "steps": 2284,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/21905_r0_s0_lock.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1249,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/16496_r0_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "13011#0",
+    "17364#0",
+    "2002#0",
+    "24014#0",
+    "1019#0",
+    "13991#0",
+    "17858#0",
+    "20840#0",
+    "24890#0",
+    "11037#0",
+    "14956#0",
+    "18992#0",
+    "21905#0",
+    "25964#0",
+    "12030#0",
+    "16496#0",
+    "19897#0",
+    "23522#0",
+    "28316#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 1,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 17,
+    "carry": 8,
+    "place": 4,
+    "full": 3
+   },
+   "end": {
+    "manip2_timeout": 5,
+    "manip1_timeout": 13,
+    "manip2_condition": 2
+   },
+   "successes": [
+    {
+     "unit": "13011#0",
+     "steps": 1073,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/13011_r0_s1_lock.npz"
+    },
+    {
+     "unit": "20840#0",
+     "steps": 1713,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/20840_r0_s1_lock.npz"
+    },
+    {
+     "unit": "21905#0",
+     "steps": 2262,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/21905_r0_s1_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "13011#0",
+    "17364#0",
+    "2002#0",
+    "24014#0",
+    "1019#0",
+    "13991#0",
+    "17858#0",
+    "20840#0",
+    "24890#0",
+    "11037#0",
+    "14956#0",
+    "18992#0",
+    "21905#0",
+    "25964#0",
+    "12030#0",
+    "16496#0",
+    "19897#0",
+    "23522#0",
+    "28316#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 2,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 17,
+    "carry": 11,
+    "place": 8,
+    "full": 5
+   },
+   "end": {
+    "manip2_timeout": 9,
+    "manip1_timeout": 9,
+    "manip2_condition": 2
+   },
+   "successes": [
+    {
+     "unit": "1019#0",
+     "steps": 809,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/1019_r0_s2_lock.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 1079,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/13011_r0_s2_lock.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1372,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/16496_r0_s2_lock.npz"
+    },
+    {
+     "unit": "18992#0",
+     "steps": 1263,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/18992_r0_s2_lock.npz"
+    },
+    {
+     "unit": "11037#0",
+     "steps": 1419,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/11037_r0_s2_lock.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "12030#0",
+    "14956#0",
+    "17858#0",
+    "2002#0",
+    "23522#0",
+    "25964#0",
+    "1019#0",
+    "13011#0",
+    "16496#0",
+    "18992#0",
+    "20840#0",
+    "24014#0",
+    "28316#0",
+    "11037#0",
+    "13991#0",
+    "17364#0",
+    "19897#0",
+    "21905#0",
+    "24890#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B_free",
+   "label": "PA-OG (planner-assisted, oracle goal)",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 18,
+    "carry": 12,
+    "place": 5,
+    "full": 3
+   },
+   "end": {
+    "manip2_timeout": 7,
+    "manip1_timeout": 9,
+    "manip2_condition": 4
+   },
+   "successes": [
+    {
+     "unit": "16496#0",
+     "steps": 992,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/16496_r0_s0.npz"
+    },
+    {
+     "unit": "18992#0",
+     "steps": 1264,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/18992_r0_s0.npz"
+    },
+    {
+     "unit": "20840#0",
+     "steps": 1481,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/20840_r0_s0.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "12030#0",
+    "14956#0",
+    "17858#0",
+    "2002#0",
+    "23522#0",
+    "25964#0",
+    "1019#0",
+    "13011#0",
+    "16496#0",
+    "18992#0",
+    "20840#0",
+    "24014#0",
+    "28316#0",
+    "11037#0",
+    "13991#0",
+    "17364#0",
+    "19897#0",
+    "21905#0",
+    "24890#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B_heldout",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 19,
+    "grasp": 7,
+    "carry": 3,
+    "place": 2,
+    "full": 2
+   },
+   "end": {
+    "manip1_timeout": 17,
+    "manip2_timeout": 3
+   },
+   "successes": [
+    {
+     "unit": "10836#0",
+     "steps": 1027,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/10836_r0_s0_lock.npz"
+    },
+    {
+     "unit": "21494#0",
+     "steps": 1467,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/21494_r0_s0_lock.npz"
+    }
+   ],
+   "units": [
+    "10263#0",
+    "12258#0",
+    "1783#0",
+    "25923#0",
+    "31969#0",
+    "10836#0",
+    "12651#2",
+    "18583#0",
+    "26172#0",
+    "32926#1",
+    "11502#0",
+    "12735#0",
+    "20953#0",
+    "28898#0",
+    "32953#0",
+    "12062#0",
+    "17694#0",
+    "21494#0",
+    "31016#3",
+    "3430#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B_heldout",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "train",
+   "seed": 1,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 19,
+    "grasp": 5,
+    "carry": 2,
+    "place": 1,
+    "full": 1
+   },
+   "end": {
+    "manip1_timeout": 17,
+    "manip2_timeout": 2,
+    "manip2_condition": 1
+   },
+   "successes": [
+    {
+     "unit": "32953#0",
+     "steps": 1166,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/32953_r0_s1_lock.npz"
+    }
+   ],
+   "units": [
+    "10263#0",
+    "12062#0",
+    "12735#0",
+    "18583#0",
+    "25923#0",
+    "31016#3",
+    "32953#0",
+    "10836#0",
+    "12258#0",
+    "17694#0",
+    "20953#0",
+    "26172#0",
+    "31969#0",
+    "3430#0",
+    "11502#0",
+    "12651#2",
+    "1783#0",
+    "21494#0",
+    "28898#0",
+    "32926#1"
+   ]
+  },
+  {
+   "dir": "pa_v2B_retry",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation + retries 3/2",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 20,
+    "grasp": 19,
+    "carry": 14,
+    "place": 8,
+    "full": 6
+   },
+   "end": {
+    "manip2_condition": 3,
+    "planner_no_pick_standoff": 4,
+    "manip2_timeout": 10,
+    "manip1_timeout": 3
+   },
+   "successes": [
+    {
+     "unit": "10064#0",
+     "steps": 1522,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/10064_r0_s0_lock_r32.npz"
+    },
+    {
+     "unit": "23522#0",
+     "steps": 1206,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/23522_r0_s0_lock_r32.npz"
+    },
+    {
+     "unit": "13011#0",
+     "steps": 945,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/13011_r0_s0_lock_r32.npz"
+    },
+    {
+     "unit": "16496#0",
+     "steps": 1115,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/16496_r0_s0_lock_r32.npz"
+    },
+    {
+     "unit": "18992#0",
+     "steps": 1113,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/18992_r0_s0_lock_r32.npz"
+    },
+    {
+     "unit": "19897#0",
+     "steps": 1115,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/19897_r0_s0_lock_r32.npz"
+    }
+   ],
+   "units": [
+    "10064#0",
+    "12030#0",
+    "14956#0",
+    "17858#0",
+    "2002#0",
+    "23522#0",
+    "25964#0",
+    "1019#0",
+    "13011#0",
+    "16496#0",
+    "18992#0",
+    "20840#0",
+    "24014#0",
+    "28316#0",
+    "11037#0",
+    "13991#0",
+    "17364#0",
+    "19897#0",
+    "21905#0",
+    "24890#0"
+   ]
+  },
+  {
+   "dir": "pa_v2B_retry_heldout",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation + retries 3/2",
+   "split": "train",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 20,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 19,
+    "grasp": 8,
+    "carry": 5,
+    "place": 1,
+    "full": 1
+   },
+   "end": {
+    "manip1_timeout": 12,
+    "manip2_condition": 2,
+    "manip2_timeout": 4,
+    "planner_no_pick_standoff": 2
+   },
+   "successes": [
+    {
+     "unit": "10836#0",
+     "steps": 1039,
+     "trace": "/workspace/runtime/runs/v2/pa_v2B_retry_heldout/traces/10836_r0_s0_lock_r32.npz"
+    }
+   ],
+   "units": [
+    "10263#0",
+    "12062#0",
+    "12735#0",
+    "18583#0",
+    "25923#0",
+    "31016#3",
+    "32953#0",
+    "10836#0",
+    "12258#0",
+    "17694#0",
+    "20953#0",
+    "26172#0",
+    "31969#0",
+    "3430#0",
+    "11502#0",
+    "12651#2",
+    "1783#0",
+    "21494#0",
+    "28898#0",
+    "32926#1"
+   ]
+  },
+  {
+   "dir": "pa_v2B_val",
+   "label": "PA-OG (planner-assisted, oracle goal) + base lock in manipulation",
+   "split": "val",
+   "seed": 0,
+   "ckpt": "/dev/shm/lmm_runtime/sft/v2B/best",
+   "eval_count": 30,
+   "engineering_errors": 0,
+   "funnel": {
+    "find": 27,
+    "grasp": 12,
+    "carry": 2,
+    "place": 1,
+    "full": 0
+   },
+   "end": {
+    "manip1_timeout": 26,
+    "manip2_timeout": 3,
+    "planner_no_place_standoff": 1
+   },
+   "successes": [],
+   "units": [
+    "1093#0",
+    "14#1",
+    "150#2",
+    "276#0",
+    "452#1",
+    "516#2",
+    "799#0",
+    "810#1",
+    "1093#1",
+    "14#2",
+    "251#0",
+    "276#1",
+    "452#2",
+    "581#0",
+    "799#1",
+    "810#2",
+    "1093#2",
+    "150#0",
+    "251#1",
+    "276#2",
+    "516#0",
+    "581#1",
+    "799#2",
+    "14#0",
+    "150#1",
+    "251#2",
+    "452#0",
+    "516#1",
+    "581#2",
+    "810#0"
+   ]
+  }
+ ],
+ "replays": [
+  {
+   "unit": "10064#0",
+   "trace": "/workspace/runtime/runs/v2/pa_repro/traces/10064_r0_s0_lock.npz",
+   "steps_recorded": 1522,
+   "steps_replayed": 1522,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 74.7
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_repro/traces/13011_r0_s0_lock.npz",
+   "steps_recorded": 1124,
+   "steps_replayed": 1124,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 59.5
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/13011_r0_s1_lock.npz",
+   "steps_recorded": 1073,
+   "steps_replayed": 1073,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 44.3
+  },
+  {
+   "unit": "20840#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/20840_r0_s1_lock.npz",
+   "steps_recorded": 1713,
+   "steps_replayed": 1713,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 91.8
+  },
+  {
+   "unit": "21905#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/21905_r0_s1_lock.npz",
+   "steps_recorded": 2262,
+   "steps_replayed": 2262,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 159.4
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/16496_r0_s0.npz",
+   "steps_recorded": 992,
+   "steps_replayed": 992,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 47.5
+  },
+  {
+   "unit": "10836#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/10836_r0_s0_lock.npz",
+   "steps_recorded": 1027,
+   "steps_replayed": 1027,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 37.5
+  },
+  {
+   "unit": "21494#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/21494_r0_s0_lock.npz",
+   "steps_recorded": 1467,
+   "steps_replayed": 1467,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 58.6
+  },
+  {
+   "unit": "10064#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/10064_r0_s0_lock_r32.npz",
+   "steps_recorded": 1522,
+   "steps_replayed": 1522,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 52.7
+  },
+  {
+   "unit": "23522#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/23522_r0_s0_lock_r32.npz",
+   "steps_recorded": 1206,
+   "steps_replayed": 1206,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 90.6
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/13011_r0_s0_lock_r32.npz",
+   "steps_recorded": 945,
+   "steps_replayed": 945,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 34.0
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/16496_r0_s0_lock_r32.npz",
+   "steps_recorded": 1115,
+   "steps_replayed": 1115,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 39.8
+  },
+  {
+   "unit": "18992#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/18992_r0_s0_lock_r32.npz",
+   "steps_recorded": 1113,
+   "steps_replayed": 1113,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 79.8
+  },
+  {
+   "unit": "19897#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry/traces/19897_r0_s0_lock_r32.npz",
+   "steps_recorded": 1115,
+   "steps_replayed": 1115,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 49.2
+  },
+  {
+   "unit": "10836#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_retry_heldout/traces/10836_r0_s0_lock_r32.npz",
+   "steps_recorded": 1039,
+   "steps_replayed": 1039,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 36.3
+  },
+  {
+   "unit": "10064#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/10064_r0_s0_lock.npz",
+   "steps_recorded": 1725,
+   "steps_replayed": 1725,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 58.4
+  },
+  {
+   "unit": "14956#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/14956_r0_s0_lock.npz",
+   "steps_recorded": 1435,
+   "steps_replayed": 1435,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 75.9
+  },
+  {
+   "unit": "10064#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/10064_r0_s1_lock.npz",
+   "steps_recorded": 1726,
+   "steps_replayed": 1726,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 38.3
+  },
+  {
+   "unit": "14956#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/14956_r0_s1_lock.npz",
+   "steps_recorded": 1433,
+   "steps_replayed": 1433,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 35.5
+  },
+  {
+   "unit": "1019#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/1019_r0_s0_lock.npz",
+   "steps_recorded": 756,
+   "steps_replayed": 756,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 39.8
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/16496_r0_s0_lock.npz",
+   "steps_recorded": 1177,
+   "steps_replayed": 1177,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 39.6
+  },
+  {
+   "unit": "20840#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/20840_r0_s0_lock.npz",
+   "steps_recorded": 1712,
+   "steps_replayed": 1712,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 74.4
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/16496_r0_s1_lock.npz",
+   "steps_recorded": 1173,
+   "steps_replayed": 1173,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 26.8
+  },
+  {
+   "unit": "21905#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/21905_r0_s0_lock.npz",
+   "steps_recorded": 2251,
+   "steps_replayed": 2251,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 132.4
+  },
+  {
+   "unit": "11037#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/11037_r0_s1_lock.npz",
+   "steps_recorded": 1411,
+   "steps_replayed": 1411,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 85.0
+  },
+  {
+   "unit": "23522#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/23522_r0_s0_lock.npz",
+   "steps_recorded": 1177,
+   "steps_replayed": 1177,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 69.6
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/13011_r0_s0_lock.npz",
+   "steps_recorded": 1073,
+   "steps_replayed": 1073,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 57.6
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/13011_r0_s1_lock.npz",
+   "steps_recorded": 1149,
+   "steps_replayed": 1149,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 24.7
+  },
+  {
+   "unit": "18992#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/18992_r0_s1_lock.npz",
+   "steps_recorded": 822,
+   "steps_replayed": 822,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 41.4
+  },
+  {
+   "unit": "24014#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft/traces/24014_r0_s1_lock.npz",
+   "steps_recorded": 983,
+   "steps_replayed": 983,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 58.1
+  },
+  {
+   "unit": "12651#2",
+   "trace": "/workspace/runtime/runs/v2/pa_msft_heldout/traces/12651_r2_s0_lock.npz",
+   "steps_recorded": 1253,
+   "steps_replayed": 1253,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 41.7
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_repro/traces/16496_r0_s0_lock.npz",
+   "steps_recorded": 1265,
+   "steps_replayed": 1265,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 28.7
+  },
+  {
+   "unit": "1019#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/1019_r0_s2_lock.npz",
+   "steps_recorded": 809,
+   "steps_replayed": 809,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 23.3
+  },
+  {
+   "unit": "13011#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/13011_r0_s2_lock.npz",
+   "steps_recorded": 1079,
+   "steps_replayed": 1079,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 23.0
+  },
+  {
+   "unit": "16496#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/16496_r0_s2_lock.npz",
+   "steps_recorded": 1372,
+   "steps_replayed": 1372,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 31.0
+  },
+  {
+   "unit": "18992#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/18992_r0_s2_lock.npz",
+   "steps_recorded": 1263,
+   "steps_replayed": 1263,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 46.7
+  },
+  {
+   "unit": "11037#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B/traces/11037_r0_s2_lock.npz",
+   "steps_recorded": 1419,
+   "steps_replayed": 1419,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 45.6
+  },
+  {
+   "unit": "18992#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/18992_r0_s0.npz",
+   "steps_recorded": 1264,
+   "steps_replayed": 1264,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 31.6
+  },
+  {
+   "unit": "20840#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_free/traces/20840_r0_s0.npz",
+   "steps_recorded": 1481,
+   "steps_replayed": 1481,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 51.5
+  },
+  {
+   "unit": "32953#0",
+   "trace": "/workspace/runtime/runs/v2/pa_v2B_heldout/traces/32953_r0_s1_lock.npz",
+   "steps_recorded": 1166,
+   "steps_replayed": 1166,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 104.7
+  },
+  {
+   "unit": "516#0",
+   "trace": "/workspace/runtime/runs/v2/pa_msft_val/traces/516_r0_s0_lock.npz",
+   "steps_recorded": 1352,
+   "steps_replayed": 1352,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": false,
+    "full": false
+   },
+   "wall_s": 139.6
+  },
+  {
+   "unit": "10064#0",
+   "trace": "/workspace/runtime/runs/v2/pa_repro/traces/10064_r0_s0_lock.npz",
+   "steps_recorded": 1522,
+   "steps_replayed": 1522,
+   "start_fix": {
+    "moved_m": 0.0,
+    "navigable": true
+   },
+   "funnel": {
+    "find": true,
+    "grasp": true,
+    "carry": true,
+    "place": true,
+    "full": true
+   },
+   "wall_s": 79.9
+  }
+ ],
+ "diagnostics": {
+  "manip_arrival": {
+   "rows": 240,
+   "by": {
+    "obj / expert_rest / train_unit": {
+     "jobs": 20,
+     "valid": 20,
+     "grasp": 20,
+     "lift": 20,
+     "carry_ready": 17,
+     "dropped": 20,
+     "held_end": 0,
+     "ovmm_carry_ever": 20,
+     "ovmm_full_end": 20
+    },
+    "recep / policy / train_unit": {
+     "jobs": 40,
+     "valid": 40,
+     "held_at_start": 40,
+     "released": 40,
+     "place_ever": 26,
+     "full_ever": 26,
+     "full_end": 20
+    },
+    "obj / policy / train_unit": {
+     "jobs": 40,
+     "valid": 40,
+     "grasp": 21,
+     "lift": 17,
+     "carry_ready": 14,
+     "dropped": 16,
+     "held_end": 5,
+     "ovmm_carry_ever": 10,
+     "ovmm_full_end": 0
+    },
+    "obj / expert_rest / heldout": {
+     "jobs": 20,
+     "valid": 20,
+     "grasp": 20,
+     "lift": 20,
+     "carry_ready": 19,
+     "dropped": 20,
+     "held_end": 0,
+     "ovmm_carry_ever": 19,
+     "ovmm_full_end": 20
+    },
+    "recep / policy / heldout": {
+     "jobs": 40,
+     "valid": 39,
+     "held_at_start": 39,
+     "released": 39,
+     "place_ever": 23,
+     "full_ever": 23,
+     "full_end": 16,
+     "eng_error": 1
+    },
+    "obj / policy / heldout": {
+     "jobs": 40,
+     "valid": 40,
+     "grasp": 12,
+     "lift": 9,
+     "carry_ready": 5,
+     "dropped": 8,
+     "held_end": 4,
+     "ovmm_carry_ever": 1,
+     "ovmm_full_end": 0
+    },
+    "recep / expert_rest / train_unit": {
+     "jobs": 20,
+     "valid": 20,
+     "held_at_start": 20,
+     "released": 20,
+     "place_ever": 20,
+     "full_ever": 20,
+     "full_end": 20
+    },
+    "recep / expert_rest / heldout": {
+     "jobs": 20,
+     "valid": 20,
+     "held_at_start": 20,
+     "released": 20,
+     "place_ever": 19,
+     "full_ever": 20,
+     "full_end": 20
+    }
+   },
+   "policy_failure_causes": {
+    "recep / released_no_place": 30,
+    "obj / no_grasp": 47,
+    "recep / ok": 36,
+    "obj / dropped_later": 12,
+    "obj / no_tuck": 7,
+    "obj / no_lift": 7,
+    "recep / placed_not_full_end": 13,
+    "obj / ok": 7
+   }
+  },
+  "manip_arrival_msft": {
+   "rows": 240,
+   "by": {
+    "obj / expert_rest / train_unit": {
+     "jobs": 20,
+     "valid": 20,
+     "grasp": 20,
+     "lift": 20,
+     "carry_ready": 17,
+     "dropped": 20,
+     "held_end": 0,
+     "ovmm_carry_ever": 20,
+     "ovmm_full_end": 20
+    },
+    "recep / expert_rest / train_unit": {
+     "jobs": 20,
+     "valid": 20,
+     "held_at_start": 20,
+     "released": 20,
+     "place_ever": 20,
+     "full_ever": 20,
+     "full_end": 20
+    },
+    "obj / expert_rest / heldout": {
+     "jobs": 20,
+     "valid": 20,
+     "grasp": 20,
+     "lift": 20,
+     "carry_ready": 19,
+     "dropped": 20,
+     "held_end": 0,
+     "ovmm_carry_ever": 19,
+     "ovmm_full_end": 20
+    },
+    "recep / expert_rest / heldout": {
+     "jobs": 20,
+     "valid": 20,
+     "held_at_start": 20,
+     "released": 20,
+     "place_ever": 19,
+     "full_ever": 20,
+     "full_end": 20
+    },
+    "obj / policy / train_unit": {
+     "jobs": 40,
+     "valid": 40,
+     "grasp": 26,
+     "lift": 23,
+     "carry_ready": 19,
+     "dropped": 23,
+     "held_end": 3,
+     "ovmm_carry_ever": 13,
+     "ovmm_full_end": 0
+    },
+    "recep / policy / train_unit": {
+     "jobs": 40,
+     "valid": 40,
+     "held_at_start": 40,
+     "released": 40,
+     "place_ever": 24,
+     "full_ever": 24,
+     "full_end": 16
+    },
+    "obj / policy / heldout": {
+     "jobs": 40,
+     "valid": 40,
+     "grasp": 10,
+     "lift": 8,
+     "carry_ready": 4,
+     "dropped": 10,
+     "held_end": 0,
+     "ovmm_carry_ever": 1,
+     "ovmm_full_end": 0
+    },
+    "recep / policy / heldout": {
+     "jobs": 40,
+     "valid": 40,
+     "held_at_start": 40,
+     "released": 40,
+     "place_ever": 31,
+     "full_ever": 32,
+     "full_end": 28
+    }
+   },
+   "policy_failure_causes": {
+    "obj / dropped_later": 20,
+    "recep / ok": 43,
+    "obj / no_lift": 5,
+    "obj / no_grasp": 44,
+    "obj / no_tuck": 8,
+    "recep / released_no_place": 25,
+    "obj / ok": 3,
+    "recep / placed_not_full_end": 12
+   }
+  }
+ }
+}
