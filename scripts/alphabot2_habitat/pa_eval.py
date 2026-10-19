@@ -43,6 +43,11 @@ EXEC = int(os.environ.get("EXEC_STEPS", "5"))
 SEED_OFFSET = int(os.environ.get("SEED_OFFSET", "0"))
 MANIP1_MAX, MANIP2_MAX = int(os.environ.get("MANIP1_MAX", "600")), int(os.environ.get("MANIP2_MAX", "500"))
 SETTLE_STEPS = int(os.environ.get("SETTLE_STEPS", "120"))
+# retries (observable failure -> the planner re-approaches): MANIP1 timeout without holding -> tuck, re-plan the pick
+# standoff from the object's current pose, re-navigate, new policy attempt; MANIP2 timeout still holding -> tuck, new
+# place sample, re-navigate, new attempt. With MANIP1_TRIES > 1, holding at a MANIP1 timeout goes on to NAV2 (planner
+# tucks the arms). Default 1 / 1 = the original contract.
+MANIP1_TRIES, MANIP2_TRIES = int(os.environ.get("MANIP1_TRIES", "1")), int(os.environ.get("MANIP2_TRIES", "1"))
 HOLD_GAP, TUCK_RAD, HOLD_K = 0.05, float(os.environ.get("TUCK_RAD", "0.30")), 3
 FRAME_EVERY = int(os.environ.get("FRAME_EVERY", "2"))
 # BASE_LOCK=1: during MANIP phases the planner owns the base -- the policy's base.v / base.omega (dims 16, 17) are
@@ -212,55 +217,71 @@ def episode(unit, rec):
     run = Run(unit)
     seed0 = int(HE.episode_seed(ep_id, rep)) + 1_000_003 * SEED_OFFSET
     ph = rec["phases"] = {}
-    # ---- NAV1 (planner, oracle goal)
-    xp = planner(run)
     rob = HE.robot(env)
-    xp.ex = C.CartesianExecutor.from_proprio(rob.proprio16())
-    obj, _ = xp.target_object()
-    xp.joint_move({s: TUCK[s] for s in SIDES}, 15)
-    plans = {s: xp.plan_pick(s, obj) for s in SIDES}
-    feas = {s: p for s, p in plans.items() if p is not None}
-    if not feas:
-        rec["end"] = "planner_no_pick_standoff"; return run
-    side = min(feas, key=lambda s: feas[s]["cost"])
-    st = feas[side]["standoff"]
-    nav1 = xp.nav_to(st["xyz"], None); xp._turn_to(st["yaw"])
-    ph["nav1"] = {"planned_arm": side, **{k: nav1.get(k) for k in ("arrived", "arrival_dist_m", "steps", "collision_steps")}}
-    if not nav1.get("arrived"):
-        rec["end"] = "nav1_not_arrived"; return run
-    # ---- MANIP1 (policy) until carry-ready
-    run.phase = "manip1"
-    ph["manip1"] = policy_phase(run, task, seed0, MANIP1_MAX, lambda: bool(run.holding()) and run.tucked())
-    ph["manip1"]["holding_obs"] = run.holding(); ph["manip1"]["held_priv"] = held_priv()
-    if ph["manip1"]["end"] != "condition":
-        rec["end"] = "manip1_" + ph["manip1"]["end"]; return run
-    # ---- NAV2 (planner, oracle goal): plan the place from the object as actually held
-    run.phase = "nav2"
-    hside = run.holding()[0]
-    xp = planner(run)
-    xp.ex = C.CartesianExecutor.from_proprio(rob.proprio16())
-    xp.grip_cmd = {s: (1.0 if s == hside else 0.0) for s in SIDES}
-    xp.side = hside
-    xp.joint_move({s: TUCK[s] for s in SIDES}, 10)
-    A = xp.arm_T_world(); gb = xp.rob.link_frame(f"{hside}_gripper_base")
-    xp.obj_in_gb = np.linalg.inv(gb) @ np.r_[np.c_[np.array(obj.transformation.rotation()), np.array(obj.translation)], [[0, 0, 0, 1]]]
-    _, ext, _, _ = xp.object_geometry(obj)
-    pl = None
-    for R0 in [r for r in (run.grasp_R, (np.linalg.inv(A) @ gb)[:3, :3]) if r is not None]:   # grasp-time, then current hand
-        xp.grasp_used = {"R": R0}
-        pl = xp.plan_place(hside, ext[1])
-        if pl is not None:
+    obj = target()
+    # ---- NAV1 (planner, oracle goal) + MANIP1 (policy), up to MANIP1_TRIES attempts
+    ph["nav1"], ph["manip1"] = [], []
+    for k in range(MANIP1_TRIES):
+        run.phase = "nav1"
+        xp = planner(run)
+        xp.ex = C.CartesianExecutor.from_proprio(rob.proprio16())
+        xp.grip_cmd = {s: 0.0 for s in SIDES}
+        xp.joint_move({s: TUCK[s] for s in SIDES}, 15, grips={s: 0.0 for s in SIDES})
+        plans = {s: xp.plan_pick(s, obj) for s in SIDES}           # from the object's CURRENT pose (oracle goal)
+        feas = {s: p for s, p in plans.items() if p is not None}
+        if not feas:
+            rec["end"] = "planner_no_pick_standoff"; return run
+        side = min(feas, key=lambda s: feas[s]["cost"])
+        st = feas[side]["standoff"]
+        nav1 = xp.nav_to(st["xyz"], None); xp._turn_to(st["yaw"])
+        ph["nav1"].append({"planned_arm": side, **{kk: nav1.get(kk) for kk in ("arrived", "arrival_dist_m", "steps", "collision_steps")}})
+        if not nav1.get("arrived"):
+            rec["end"] = "nav1_not_arrived"; return run
+        run.phase = "manip1"
+        m1 = policy_phase(run, task, seed0 + 1_000_003 * 13 * k, MANIP1_MAX, lambda: bool(run.holding()) and run.tucked())
+        m1["holding_obs"] = run.holding(); m1["held_priv"] = held_priv()
+        ph["manip1"].append(m1)
+        if m1["end"] == "condition" or (m1["end"] == "timeout" and run.holding() and MANIP1_TRIES > 1):
+            break                                                   # carry-ready, or holding at timeout -> planner tucks
+        if m1["end"] == "episode_over":
             break
-    if pl is None:
-        rec["end"] = "planner_no_place_standoff"; return run
-    nav2 = xp.nav_to(pl["standoff"]["xyz"], None); xp._turn_to(pl["standoff"]["yaw"])
-    ph["nav2"] = {"hand": hside, "recep": pl["recep"], **{k: nav2.get(k) for k in ("arrived", "arrival_dist_m", "steps", "collision_steps")},
-                  "held_priv_at_arrival": held_priv()}
-    if not nav2.get("arrived"):
-        rec["end"] = "nav2_not_arrived"; return run
-    # ---- MANIP2 (policy) until released + retracted
-    run.phase = "manip2"
-    ph["manip2"] = policy_phase(run, task, seed0 + 7_777_777, MANIP2_MAX, lambda: (not run.holding()) and run.tucked())
+    m1 = ph["manip1"][-1]
+    if not (m1["end"] == "condition" or (MANIP1_TRIES > 1 and run.holding())):
+        rec["end"] = "manip1_" + m1["end"]; return run
+    # ---- NAV2 (planner, oracle goal) + MANIP2 (policy), up to MANIP2_TRIES attempts while still holding
+    ph["nav2"], ph["manip2"] = [], []
+    for k in range(MANIP2_TRIES):
+        if not run.holding():
+            break
+        run.phase = "nav2"
+        hside = run.holding()[0]
+        xp = planner(run)
+        xp.ex = C.CartesianExecutor.from_proprio(rob.proprio16())
+        xp.grip_cmd = {s: (1.0 if s == hside else 0.0) for s in SIDES}
+        xp.side = hside
+        xp.joint_move({s: TUCK[s] for s in SIDES}, 10)
+        A = xp.arm_T_world(); gb = xp.rob.link_frame(f"{hside}_gripper_base")
+        xp.obj_in_gb = np.linalg.inv(gb) @ np.r_[np.c_[np.array(obj.transformation.rotation()), np.array(obj.translation)], [[0, 0, 0, 1]]]
+        _, ext, _, _ = xp.object_geometry(obj)
+        pl = None
+        for R0 in [r for r in (run.grasp_R, (np.linalg.inv(A) @ gb)[:3, :3]) if r is not None]:   # grasp-time, then current hand
+            xp.grasp_used = {"R": R0}
+            xp.rng = np.random.default_rng(k)                       # a fresh place sample per attempt
+            pl = xp.plan_place(hside, ext[1])
+            if pl is not None:
+                break
+        if pl is None:
+            rec["end"] = "planner_no_place_standoff"; return run
+        nav2 = xp.nav_to(pl["standoff"]["xyz"], None); xp._turn_to(pl["standoff"]["yaw"])
+        ph["nav2"].append({"hand": hside, "recep": pl["recep"], **{kk: nav2.get(kk) for kk in ("arrived", "arrival_dist_m", "steps", "collision_steps")},
+                           "held_priv_at_arrival": held_priv()})
+        if not nav2.get("arrived"):
+            rec["end"] = "nav2_not_arrived"; return run
+        run.phase = "manip2"
+        m2 = policy_phase(run, task, seed0 + 7_777_777 + 1_000_003 * 17 * k, MANIP2_MAX, lambda: (not run.holding()) and run.tucked())
+        ph["manip2"].append(m2)
+        if m2["end"] != "timeout":
+            break
     # ---- DONE: hold still
     run.phase = "settle"
     hold = np.r_[rob.proprio16(), 0.0, 0.0]
@@ -270,18 +291,20 @@ def episode(unit, rec):
         if env.episode_over:
             break
         HE.step18(env, hold); run.record(np.full(18, np.nan))
-    rec["end"] = "manip2_" + ph["manip2"]["end"]
+    rec["end"] = "manip2_" + ph["manip2"][-1]["end"]
     return run
 
 
-fn = f"{OUT}/pa_w{WK:02d}_s{SEED_OFFSET}{'_lock' if BASE_LOCK else ''}.jsonl"
+TAG = f"{'_lock' if BASE_LOCK else ''}{f'_r{MANIP1_TRIES}{MANIP2_TRIES}' if (MANIP1_TRIES, MANIP2_TRIES) != (1, 1) else ''}"
+fn = f"{OUT}/pa_w{WK:02d}_s{SEED_OFFSET}{TAG}.jsonl"
 done = {json.loads(l)["unit"] for l in open(fn)} if os.path.exists(fn) else set()
 for unit in units:
     if unit in done:
         continue
-    rec = {"unit": unit, "split": SPLIT, "seed_offset": SEED_OFFSET, "label": "PA-OG (planner-assisted, oracle goal)" + (" + base lock in manipulation" if BASE_LOCK else ""),
+    rec = {"unit": unit, "split": SPLIT, "seed_offset": SEED_OFFSET, "label": "PA-OG (planner-assisted, oracle goal)" + (" + base lock in manipulation" if BASE_LOCK else "")
+           + (f" + retries {MANIP1_TRIES}/{MANIP2_TRIES}" if (MANIP1_TRIES, MANIP2_TRIES) != (1, 1) else ""),
            "h_exec": EXEC, "policy_ckpt": os.environ.get("POLICY_CKPT"),
-           "contract": {"BASE_LOCK": BASE_LOCK, "MANIP1_MAX": MANIP1_MAX, "MANIP2_MAX": MANIP2_MAX, "SETTLE_STEPS": SETTLE_STEPS, "HOLD_GAP": HOLD_GAP,
+           "contract": {"BASE_LOCK": BASE_LOCK, "MANIP1_TRIES": MANIP1_TRIES, "MANIP2_TRIES": MANIP2_TRIES, "MANIP1_MAX": MANIP1_MAX, "MANIP2_MAX": MANIP2_MAX, "SETTLE_STEPS": SETTLE_STEPS, "HOLD_GAP": HOLD_GAP,
                         "TUCK_RAD": TUCK_RAD, "HOLD_K": HOLD_K}}
     t0 = time.time()
     run = None
@@ -294,7 +317,7 @@ for unit in units:
     except Exception as e:
         rec["engineering_error"] = repr(e)[:300]; rec["tb"] = traceback.format_exc()[-1500:]
     if run is not None and run.tr["pose"]:
-        jid = f"{unit.replace('#', '_r')}_s{SEED_OFFSET}{'_lock' if BASE_LOCK else ''}"
+        jid = f"{unit.replace('#', '_r')}_s{SEED_OFFSET}{TAG}"
         tmp = f"/dev/shm/patrace_{WK}_{jid}.npz"
         fr = np.asarray(run.tr.pop("frames"), np.uint8).reshape(-1, 120, 480, 3)
         np.savez_compressed(tmp, frames=fr, joint18=np.asarray(JOINTS, np.float32).reshape(-1, 18),

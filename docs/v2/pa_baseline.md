@@ -49,3 +49,10 @@ BASE_LOCK=1 ("PA-OG + base lock"): during MANIP1 / MANIP2 the planner owns the b
 are replaced by 0 (arms + grippers unchanged; raw v / omega traced). Motivation: in the smoke episode the policy began
 the place reach, then drove away with the object for the remaining 500 steps (NAV / manipulation mode confusion).
 Both variants are reported, labelled; neither uses privileged information in the policy or the switches.
+
+Amendment 2 (2026-10-19 ~13:50, before any retry result): variant "PA-OG + base lock + retries 3/2" (MANIP1_TRIES=3,
+MANIP1_MAX=250, MANIP2_TRIES=2, MANIP2_MAX=350). Observable failure -> the planner re-approaches: MANIP1 timeout without
+holding -> arms to tuck (grippers open), pick standoff re-planned from the object's current pose (oracle goal),
+re-navigate, new policy attempt; holding at a MANIP1 timeout -> NAV2 (the planner tucks). MANIP2 timeout while still
+holding -> tuck, new place sample, re-navigate, new attempt. A release (place done or not) ends the episode. Reported
+as its own labelled variant; the 1/1 default is the original contract (code path unchanged for it).
