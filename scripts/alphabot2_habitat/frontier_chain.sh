@@ -16,6 +16,13 @@ log() { echo "$(date '+%F %T') $*" >> $L; }
 export PI05_CKPT=/workspace/runtime/pi05/ckpt PI05_SPM=/workspace/runtime/pi05/paligemma_tokenizer.model TORCHDYNAMO_DISABLE=1 \
        LMM_REPO=/workspace/lmm PYTHONUNBUFFERED=1 HF_HOME=$Y/envs/_hf_home
 HB='{"camera": "camera_top", "offsets": [5, 10, 15], "state": false}'
+# a container restart wipes /dev/shm: restore v2-B best from the verified step-10000 mirror (sha256 must match)
+WANT=405f2d5d785b52af4d1f72b01500afa94cbf60c618f90ed3bbe529f882117fd7
+if [ ! -f $CK/model.safetensors ]; then
+  mkdir -p $(dirname $CK); cp -r /workspace/runtime/sft_mirror/v2B/ckpt_step0010000/policy $CK
+  log "v2-B best restored from the mirror"
+fi
+[ "$(sha256sum $CK/model.safetensors | cut -c1-64)" = "$WANT" ] || { log "v2-B sha256 mismatch; refusing to run"; exit 1; }
 log "start commit $(git -C /workspace/lmm rev-parse --short HEAD) ckpt $CK sha $(sha256sum $CK/model.safetensors | cut -c1-16) gpus $GPUS servers/gpu $NS clients/server $CPS"
 PORTS=()
 for g in "${G[@]}"; do
