@@ -9,11 +9,13 @@ evaluation result and code change, run this; a task is backed up only when this 
   `git clone <bundle>`), so code is backed up even when GitHub is unreachable.
 * The repo is created PRIVATE if missing; a public repo is refused.
 * Text files are scanned for secrets (HF / W&B tokens, private keys) and the upload is refused if any match.
+* Upload: hf_hub upload_large_folder (resumable, multi-commit; re-running the same command resumes) for files < 4 GB,
+  upload_file for larger ones.
 * backups/<tag>/MANIFEST.json lists every uploaded file with size and sha256; after the upload the remote tree is
   listed and every file's size (and LFS sha256 where available) must match, else exit 1.
 Token: $HF_TOKEN, else ~/.cache/huggingface/token, else /root/.config/hf_token_write (never printed or written).
 """
-import argparse, hashlib, json, os, re, subprocess, sys, tempfile, time
+import argparse, hashlib, json, os, re, subprocess, sys, time
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -66,7 +68,11 @@ def main():
     api.create_repo(a.repo, repo_type="dataset", private=True, exist_ok=True)
     if not api.repo_info(a.repo, repo_type="dataset").private:
         sys.exit(f"refused: {a.repo} is public")
-    tmp = Path(tempfile.mkdtemp(prefix="hf_sync_"))
+    tmp = Path(os.environ.get("HF_SYNC_STAGE", Path.home() / ".cache/hf_sync_stage")) / a.tag   # stable: re-runs resume
+    if (tmp / "stage").exists():
+        import shutil
+        shutil.rmtree(tmp / "stage" / "backups", ignore_errors=True)   # re-link current files; upload cache is kept
+    tmp.mkdir(parents=True, exist_ok=True)
     pairs = []                                                    # (local file, path in repo)
     for g in a.git:
         sha = subprocess.check_output(["git", "-C", g, "rev-parse", "--short", "HEAD"], text=True).strip()
@@ -90,18 +96,21 @@ def main():
     stage = tmp / "stage"                                         # one commit for all small files (hardlinks/copies)
     for p, d in small:
         q = stage / d; q.parent.mkdir(parents=True, exist_ok=True)
+        if q.exists():
+            q.unlink()
         try:
             os.link(p, q)
         except OSError:
             import shutil
             shutil.copy2(p, q)
-    if small:
-        api.upload_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), commit_message=f"backup {a.tag} ({len(small)} files)")
+    if small:                                                     # resumable, split into several commits (large trees time out as one)
+        api.upload_large_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False)
     for p, d in pairs:
         if p.stat().st_size >= BIG:
             api.upload_file(path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")
     # verify
-    want = {d: (p.stat().st_size, None if p == mf else next(m["sha256"] for m in man if m["path"] == d)) for p, d in pairs}
+    shas = {m["path"]: m["sha256"] for m in man}
+    want = {d: (p.stat().st_size, shas.get(d)) for p, d in pairs}
     remote = {}
     for top in sorted({d.split("/")[0] for d in want}):
         for e in api.list_repo_tree(a.repo, repo_type="dataset", path_in_repo=top, recursive=True, expand=True):
