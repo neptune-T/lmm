@@ -77,7 +77,20 @@ v_tr_m = [p for p in v_tr if p["seed"] in m_seeds]
 v_ho_m = [p for p in v_ho if p["seed"] in {p2["seed"] for p2 in m_ho}]
 v_va_m = [p for p in v_va if p["seed"] in {p2["seed"] for p2 in m_va}]
 
-rep = D["replays"]
+def paired(ma, vb):
+    """(M-SFT-only, v2-B-only, both, exact two-sided sign-test p) over identical (unit, seed) pairs"""
+    import math
+    def succ(ps):
+        return {(u, p["seed"]): any(x["unit"] == u for x in p["successes"]) for p in ps for u in p["units"]}
+    a, b = succ(ma), succ(vb)
+    ks = set(a) & set(b)
+    w = sum(a[k] and not b[k] for k in ks); l = sum(b[k] and not a[k] for k in ks); both = sum(a[k] and b[k] for k in ks)
+    n = w + l
+    pv = min(1.0, 2 * sum(math.comb(n, i) for i in range(min(w, l) + 1)) / 2 ** n) if n else 1.0
+    return w, l, both, len(ks), pv
+
+
+rep = list({r["trace"]: r for r in D["replays"]}.values())          # one row per recorded trace
 rep_ok = sum(1 for r in rep if r["funnel"].get("full"))
 rep_units = sorted({r["unit"] for r in rep if r["funnel"].get("full")})
 rep_rows = "".join(
@@ -86,6 +99,10 @@ rep_rows = "".join(
     f'<td class="{"ok" if r["funnel"].get("full") else "bad"}">{"full success" if r["funnel"].get("full") else "not full"}</td></tr>'
     for r in rep)
 rp_s, rp_n = tot(repro)
+rep_bad = [r for r in rep if not r["funnel"].get("full")]
+rep_bad_txt = (" Not reproduced: " + ", ".join(f"{r['unit']} ({'/'.join(r['trace'].split('/')[-3:-2])}; replay ends with place = "
+                                               f"{r['funnel'].get('place')})" for r in rep_bad) + ", a marginal placement; it is "
+               "not counted as a verified success.") if rep_bad else ""
 
 
 def diag_counts(name):
@@ -145,11 +162,14 @@ def msft_line():
             f"OVMM-val <b>{frac(m_va)}</b> vs {frac(v_va_m)}.</li>")
 
 
+pt, ph, pv_ = paired(m_tr, v_tr_m), paired(m_ho, v_ho_m), paired(m_va, v_va_m)
+pair_txt = " · ".join(f"{lab}: M-SFT-only {x[0]}, v2-B-only {x[1]}, both {x[2]} of {x[3]} pairs (sign test p = {x[4]:.2f})"
+                      for lab, x in (("train", pt), ("held-out", ph), ("OVMM-val", pv_)) if x[3])
 msft_section = ""
 if m_tr or dm:
     msft_section = f"""<section><h2>3 · Minimal manipulation fix: M-SFT v1</h2>
 <p>Continuation of v2-B (unchanged; its sha256 was verified after training) on the same v2 data with navigation, tuck and settle frames at sampling weight 0; place stages up-weighted. 3000 steps × 16 (48k samples, 30% of v2-B's budget), lr 1e-5 → 2.5e-6, evaluated checkpoint <code>last</code> (fixed budget, pre-registered). Its NAV is irrelevant here because the planner navigates. Interrupted once by the container restart and resumed from its step-2000 checkpoint.</p>
-<p>PA-OG + base lock, paired with v2-B on the same units and seeds: train <b>{frac(m_tr)}</b> vs {frac(v_tr_m)} · held-out <b>{frac(m_ho)}</b> vs {frac(v_ho_m)} · OVMM-val <b>{frac(m_va)}</b> vs {frac(v_va_m)}. Per-pass rows are in the table above.</p>
+<p>PA-OG + base lock, paired with v2-B on the same units and seeds: train <b>{frac(m_tr)}</b> vs {frac(v_tr_m)} · held-out <b>{frac(m_ho)}</b> vs {frac(v_ho_m)} · OVMM-val <b>{frac(m_va)}</b> vs {frac(v_va_m)}. Paired on identical (unit, seed): {E(pair_txt)}. The train gain is a trend, not significant at this n. Per-pass rows are in the table above.</p>
 {diag_table("manip_arrival_msft", "M-SFT v1 from expert arrival (same 240 jobs)")}
 </section>"""
 
@@ -201,7 +221,7 @@ a{{color:var(--accent)}}
 <section class="verdict">
 <span class="eyebrow">Outcome</span>
 <ul>
-<li><b>Non-zero full-task success</b>, verified by replay: <b>{rep_ok}/{len(rep)}</b> recorded successes re-execute from a fresh reset to <code>ovmm_place_success</code> = True ({len(rep_units)} distinct episodes). The v2 end-to-end evals had 0 successes.</li>
+<li><b>Non-zero full-task success</b>, verified by replay: <b>{rep_ok}/{len(rep)}</b> recorded successes re-execute from a fresh reset to <code>ovmm_place_success</code> = True ({len(rep_units)} distinct episodes). The v2 end-to-end evals had 0 successes.{E(rep_bad_txt)}</li>
 <li>v2-B, PA-OG + base lock: train units <b>{tr_s}/{tr_n}</b> ({pct(tr_s, tr_n)}, {len(v_tr)} seeds), held-out episodes <b>{ho_s}/{ho_n}</b>, OVMM-val <b>{va_s}/{va_n}</b>. Generalization beyond the training scenes is the open problem.</li>
 <li>Manipulation works once navigation is solved, but only partially. From the expert's arrival, π0.5 places successfully in {place_rate} of trials; grasp-to-carry-ready ({carry_rate}) is the main bottleneck. The v2 zero-success was navigation.</li>
 {msft_line()}
