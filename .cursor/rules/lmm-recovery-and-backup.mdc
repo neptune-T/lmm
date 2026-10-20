@@ -1,0 +1,44 @@
+---
+description: LMM recovery, experiment integrity, shared GPU safety and task-completion backups
+alwaysApply: true
+---
+
+# Restore evidence before executing
+
+- Read `docs/STATUS.md` and its latest recovery document before any resumed work.
+- Inspect live server processes, tmux, logs, GPU ownership and artifact hashes. Adopt healthy
+  jobs; do not restart them because a local monitor or client session disappeared.
+- Keep long jobs in server-side tmux with named windows and durable logs.
+- Current host: `lj-gpu` through `lj-bastion`; project root
+  `/cluster/home/gaomingju/workspace/lmm/lmm`. Code is in `code/`, HF cache in `hf/`.
+- Current permission is GPU7 only. Check free memory and competing processes before launches;
+  a low utilization reading is not an idle GPU. Do not kill other jobs or run a keep-alive.
+- Explicitly use `/usr/bin/python3.12` for new pi0.5/tools venvs on this host; plain tmux
+  `python3` may be3.6. Habitat remains in its isolated Python3.9 environment.
+
+# A task is complete only after verified backup
+
+- After each completed collection shard, conversion, training/checkpoint, evaluation result
+  and code change, back up to private HF dataset `Neptune-T/lmm-alphabot2-ovmm-runs`.
+- Use `scripts/hf_sync.py` with a task-specific tag and an external `--receipt` file.
+  Require a remote revision, exact file count, content-hash verification and zero mismatches.
+- Store complete immutable artifact snapshots. Never treat size/mtime or upload progress as
+  proof; preserve source copies and last known good checkpoints until retention is authorized.
+- Save best and final weights plus optimizer/scheduler/RNG/sampler state for resumable training;
+  test resume. A weights-only pilot must be labelled nonresumable.
+- Do not back up credentials, `.ssh`, home directories or chat transcripts. Keep tokens in
+  secure environment/credential files outside the project; scan git history before bundling.
+- `hf_backup.py` excludes raw trajectories and step checkpoints: it is not a full backup.
+
+# Preserve experimental meaning
+
+- Original v2 weights and exact frozen manifest are not recovered. New collection gets a new
+  ID/provenance; never relabel it `v2-9a54b0ff11a4` or substitute September checkpoints.
+- Keep base-episode train/heldout/eval isolation; never tune on frozen final eval.
+- Before conversion passes, verify every decoded video count, dropped-frame logs, cross-shard
+  source alignment and peak RAM; use exact train-only statistics and physically correct history.
+- The stored v2B YAML is a sweep template; do not blindly use its omega4/aux1 as the old winner.
+- Verify checkpoint SHA256 before eval; exclude superseded stale1k teacher-forced probes.
+- Use10/15/20cm arm thresholds, first onset/exposure counts and paired episode uncertainty;
+  normal tuck is not false reach. Keep the old perturbation verdict INCONCLUSIVE.
+- No new architecture, frontier/RL, FP4 or extra SFT budget without current user authorization.
