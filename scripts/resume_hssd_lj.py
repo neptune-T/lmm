@@ -69,15 +69,33 @@ def main():
         assert digest(probe) == hashlib.sha256(payload).hexdigest()
     finally:
         probe.unlink(missing_ok=True)
-    records = []
+    records, repairs = [], []
     for p in sorted(DEST.rglob("*")):
         if not p.is_file() or ".cache" in p.parts:
             continue
         rel = p.relative_to(DEST).as_posix()
         meta = DEST / ".cache/huggingface/download" / (rel + ".metadata")
-        m = meta.read_text().splitlines()
-        assert m[0] == REVISION, f"Unexpected cached revision: {rel}"
         sha = digest(p)
+        m = meta.read_text().splitlines() if meta.exists() else []
+        if len(m) < 3 or m[0] != REVISION:
+            # A failed Xet transfer can leave complete content but an empty metadata file.
+            # Validate against the pinned upstream object before repairing ONLY the index.
+            from huggingface_hub import HfApi
+            from huggingface_hub._local_folder import write_download_metadata
+            from hf_sync import token
+            entry = HfApi(token=token()).get_paths_info(
+                "hssd/hssd-hab", [rel], repo_type="dataset", revision=REVISION)[0]
+            expected = entry.lfs.sha256 if entry.lfs else entry.blob_id
+            actual = sha if entry.lfs else digest(p, git=True)
+            assert p.stat().st_size == entry.size and actual == expected, f"Damaged cached content: {rel}"
+            before = p.stat().st_mtime_ns
+            repairs.append({"path": rel, "old_metadata": m, "revision": REVISION,
+                            "upstream_etag": expected, "size": entry.size, "sha256": sha})
+            write_download_metadata(DEST, rel, REVISION, expected)
+            assert p.stat().st_mtime_ns == before and digest(p) == sha
+            write(out / "cache_metadata_repairs.json", repairs)
+            m = meta.read_text().splitlines()
+        assert m[0] == REVISION, f"Unexpected cached revision: {rel}"
         etag = sha if len(m[1]) == 64 else digest(p, git=True)
         assert etag == m[1], f"Cached file hash mismatch: {rel}"
         records.append({"path": rel, "size": p.stat().st_size, "sha256": sha,
@@ -89,6 +107,7 @@ def main():
         "root_cause_limit": "Underlying transport/filesystem cause not proven by traceback",
         "destination_write_fsync_readback": "passed 8 MiB",
         "cached_files_verified": len(records), "cached_bytes": sum(r["size"] for r in records),
+        "cache_metadata_repairs": len(repairs),
         "partial_files": len(list((DEST / ".cache").rglob("*.incomplete"))),
         "repair": "HF_HUB_DISABLE_XET=1; pinned revision; force_download remains false",
         "resume_scope": "completed-file cache reuse; hub 1.19.0 removes failed temporary files",
