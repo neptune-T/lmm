@@ -58,7 +58,10 @@ with ThreadPoolExecutor(8) as ex:
     res = list(ex.map(get, files))
 spm = os.path.join(dest, "paligemma_tokenizer.model")
 if not os.path.exists(spm):
-    urllib.request.urlretrieve(SPM_URL, spm + ".part")
+    # A hanging Google connection used to block the entire pipeline without a timeout.
+    with urllib.request.urlopen(SPM_URL, timeout=60) as r, open(spm + ".part", "wb") as f:
+        for block in iter(lambda: r.read(1 << 20), b""):
+            f.write(block)
     os.replace(spm + ".part", spm)
 rec = {"repo": REPO, "revision": rev, "files": {f.path: f.size for f in files}, "results": dict(zip([f.path for f in files], res)),
        "tokenizer": SPM_URL, "tokenizer_sha256": hashlib.sha256(open(spm, "rb").read()).hexdigest(),

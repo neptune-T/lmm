@@ -40,6 +40,9 @@ if [ ! -f "$RUN/pi05_env_backup_verified.json" ]; then
   mv "$ROOT/runtime/archive/alphabot2_pi05.tar.gz.partial" "$ROOT/runtime/archive/alphabot2_pi05.tar.gz"
   sha256sum "$ROOT/runtime/archive/alphabot2_pi05.tar.gz" >"$ROOT/runtime/archive/alphabot2_pi05.tar.gz.sha256"
   "$P" "$CODE/scripts/hf_sync.py" --tag lj_20261020_pi05_env \
-    "$ROOT/runtime/archive" --receipt "$RUN/pi05_env_backup_verified.json"
+    "$ROOT/runtime/archive/alphabot2_pi05.tar.gz" \
+    "$ROOT/runtime/archive/alphabot2_pi05.tar.gz.sha256" \
+    "$ROOT/runtime/archive/alphabot2_pi05.pip-freeze.txt" \
+    --receipt "$RUN/pi05_env_backup_verified.json"
 fi
 event "PREPARATION_DONE; Habitat/assets/collection gates still required; no automatic SFT/RL"
