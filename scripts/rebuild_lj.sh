@@ -16,7 +16,7 @@ event() { printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$RUN/events.log"; }
 trap 'event "BLOCKED preparation line=$LINENO exit=$?"' ERR
 event "START CPU preparation; GPU7 reserved only as a requested device, not allocated"
 if [ ! -x "$ROOT/envs/backup/bin/python" ]; then
-  python3 -m venv "$ROOT/envs/backup"
+  /usr/bin/python3.12 -m venv "$ROOT/envs/backup"
 fi
 P=$ROOT/envs/backup/bin/python
 "$P" -m pip install 'huggingface_hub==1.19.0' >"$ROOT/logs/backup_env_install.log" 2>&1
@@ -33,7 +33,7 @@ fi
 event "BASE_MODEL_BACKUP_VERIFIED (public initial checkpoint, not recovered v2-B)"
 if [ ! -f "$RUN/pi05_env_backup_verified.json" ]; then
   PI05_ENV="$ROOT/envs/alphabot2_pi05" PI05_CKPT="$ROOT/runtime/pi05/ckpt" \
-    PI05_ARCHIVE_DIR="$ROOT/runtime/archive" PYTHON_BOOTSTRAP=python3 \
+    PI05_ARCHIVE_DIR="$ROOT/runtime/archive" PYTHON_BOOTSTRAP=/usr/bin/python3.12 \
     bash "$CODE/scripts/alphabot2_pi05/build_pi05_env.sh"
   # No active writers to this environment. Archive permissions/symlinks; do not archive HF credentials.
   tar czf "$ROOT/runtime/archive/alphabot2_pi05.tar.gz.partial" -C "$ROOT/envs" alphabot2_pi05

@@ -43,8 +43,9 @@ fi
 "$E/bin/python" -m pip install 'numpy==1.23.5' 'scipy==1.10.1' 'gym==0.23.0' \
   'hydra-core==1.3.2' 'omegaconf==2.3.0' yacs 'numpy-quaternion<2024' attrs \
   'numba<0.58' 'pillow<10' imageio imageio-ffmpeg matplotlib opencv-python-headless==4.10.0.84 \
-  tqdm pyyaml 'tensorboard<2.16' 'protobuf<5' 'moviepy<2' webdataset \
-  lmdb einops 'gymnasium<1' 'wandb<0.17' xacro trimesh==3.23.5 pybullet
+  tqdm pyyaml tensorboard==2.8.0 protobuf==3.20.1 'moviepy<2' webdataset==0.1.40 \
+  lmdb einops 'gymnasium<1' 'wandb<0.17' xacro trimesh==3.23.5 pybullet \
+  ifcfg 'faster_fifo>=1.4.2' 'threadpoolctl>=3.1.0'
 HL=$R/home-robot/src/third_party/habitat-lab
 "$E/bin/python" -m pip install --no-deps -e "$HL/habitat-lab" -e "$HL/habitat-baselines"
 "$E/bin/python" -c 'import habitat_sim, habitat, habitat_baselines, torch; print("IMPORT_OK", habitat_sim.__version__, torch.__version__)'

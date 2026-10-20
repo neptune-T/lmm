@@ -52,6 +52,10 @@ def main():
             records.append({"path": e.path, "size": e.size, "sha256": digest})
         manifest = RUN / f"{name}_upstream_manifest.json"
         manifest.write_text(json.dumps({"repo": repo, "revision": revision, "files": records}, indent=1))
+        # Preserve the existing runtime stager's input contract, now derived from verified upstream files.
+        if name in ("objects", "scenes"):
+            (dest / f"MANIFEST.{revision[:7]}.tsv").write_text("".join(
+                f"{r['path']}\t{r['size']}\t{r['sha256']}\n" for r in records))
         subprocess.run([sys.executable, str(Path(__file__).with_name("hf_sync.py")),
                         "--tag", f"lj_20261020_ovmm_{name}", str(dest), str(manifest),
                         "--receipt", str(receipt)], check=True)

@@ -30,7 +30,8 @@ clone_sparse robot_descriptions robot_descriptions bd491829961a8562306515001103a
 clone_sparse robot-descriptions-common rd_common 92fa1ebf7b7b6a36f8e277dda48706903e57101d \
   gripper/inspire_description sensor_models
 E=$ROOT/envs/robot_tools
-[ -x "$E/bin/python" ] || python3 -m venv "$E"
+[ -x "$E/bin/python" ] || /usr/bin/python3.12 -m venv "$E"
+"$E/bin/python" -m pip install --upgrade pip
 "$E/bin/python" -m pip install xacro==2.1.1 numpy==1.26.4
 "$E/bin/python" -m lmm.embodiments.alphabot2.habitat.build_urdf "$R/alphabot2_assets/alphabot2"
 "$E/bin/python" "$CODE/scripts/alphabot2_habitat/urdf_compare.py" \
