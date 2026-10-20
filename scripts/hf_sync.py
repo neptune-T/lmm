@@ -11,6 +11,8 @@ evaluation result and code change, run this; a task is backed up only when this 
 * Text files are scanned for secrets (HF / W&B tokens, private keys) and the upload is refused if any match.
 * Upload: hf_hub upload_large_folder (resumable, multi-commit; re-running the same command resumes) for files < 4 GB,
   upload_file for larger ones.
+* Paths inside a ".cache/huggingface/" directory (HF download-cache locks / metadata; the uploader reserves that name)
+  are excluded and listed in the manifest.
 * backups/<tag>/MANIFEST.json lists every uploaded file with size and sha256; after the upload the remote tree is
   listed and every file's size (and LFS sha256 where available) must match, else exit 1.
 Token: $HF_TOKEN, else ~/.cache/huggingface/token, else /root/.config/hf_token_write (never printed or written).
@@ -85,12 +87,17 @@ def main():
         s = Path(src)
         for p in files_of(s):
             pairs.append((p, dest if s.is_file() else f"{dest}/{p.relative_to(s).as_posix()}"))
+    # huggingface_hub reserves ".cache/huggingface" for its own upload metadata and never uploads it: such files (HF
+    # download caches: locks / metadata) are excluded explicitly and listed in the manifest, not silently lost
+    excluded = [str(p) for p, d in pairs if "/.cache/huggingface/" in f"/{d}"]
+    pairs = [(p, d) for p, d in pairs if "/.cache/huggingface/" not in f"/{d}"]
     bad = scan([p for p, _ in pairs])
     if bad:
         sys.exit(f"refused: secret-like content in {bad[:5]}")
     man = [{"path": d, "size": p.stat().st_size, "sha256": sha256(p), "source": str(p)} for p, d in pairs]
     mf = tmp / "MANIFEST.json"
-    mf.write_text(json.dumps({"tag": a.tag, "time": time.strftime("%F %T"), "host": os.uname().nodename, "files": man}, indent=1))
+    mf.write_text(json.dumps({"tag": a.tag, "time": time.strftime("%F %T"), "host": os.uname().nodename, "files": man,
+                              "excluded_hf_cache_files": excluded}, indent=1))
     pairs.append((mf, f"backups/{a.tag}/MANIFEST.json"))
     small = [(p, d) for p, d in pairs if p.stat().st_size < BIG]
     stage = tmp / "stage"                                         # one commit for all small files (hardlinks/copies)
