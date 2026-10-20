@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location("hf_sync", Path(__file__).parents[1] / "scripts/hf_sync.py")
 sync = importlib.util.module_from_spec(spec)
@@ -10,6 +11,21 @@ spec.loader.exec_module(sync)
 
 
 class BackupIntegrity(unittest.TestCase):
+    def test_rate_limit_respects_server_delay(self):
+        error = RuntimeError("rate limited")
+        error.response = SimpleNamespace(status_code=429, headers={"Retry-After": "69"})
+        call = Mock(side_effect=[error, "ok"])
+        with patch.object(sync.time, "sleep") as sleep:
+            self.assertEqual(sync.hf_call(call), "ok")
+            sleep.assert_called_once_with(71)
+        self.assertEqual(call.call_count, 2)
+
+    def test_other_errors_are_not_retried(self):
+        with patch.object(sync.time, "sleep") as sleep:
+            with self.assertRaises(ValueError):
+                sync.hf_call(Mock(side_effect=ValueError("bad data")))
+            sleep.assert_not_called()
+
     def test_same_size_stale_lfs_is_rejected(self):
         remote = SimpleNamespace(size=8, lfs=SimpleNamespace(sha256="old"))
         self.assertFalse(sync.verify_file(remote, 8, "new", "unused"))

@@ -27,6 +27,23 @@ TEXT_MAX = 20 << 20
 BIG = 4 << 30                                                     # files above this go one by one
 
 
+def hf_call(fn, *args, **kwargs):
+    """Respect server cooldown also for API methods without built-in 429 retries."""
+    for attempt in range(7):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            if response is None or response.status_code != 429 or attempt == 6:
+                raise
+            try:
+                delay = max(1.0, float(response.headers.get("Retry-After", "300"))) + 2
+            except ValueError:
+                delay = 302
+            print(json.dumps({"event": "HF_RATE_LIMIT_WAIT", "seconds": delay, "attempt": attempt + 1}), flush=True)
+            time.sleep(delay)
+
+
 def token():
     if os.environ.get("HF_TOKEN"):
         return os.environ["HF_TOKEN"]
@@ -105,8 +122,8 @@ def main():
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", a.tag) or a.tag in (".", ".."):
         sys.exit("invalid backup tag")
     api = HfApi(token=token())
-    api.create_repo(a.repo, repo_type="dataset", private=True, exist_ok=True)
-    if not api.repo_info(a.repo, repo_type="dataset").private:
+    hf_call(api.create_repo, a.repo, repo_type="dataset", private=True, exist_ok=True)
+    if not hf_call(api.repo_info, a.repo, repo_type="dataset").private:
         sys.exit(f"refused: {a.repo} is public")
     tmp = Path(os.environ.get("HF_SYNC_STAGE", Path.home() / ".cache/hf_sync_stage")) / a.tag   # stable: re-runs resume
     if (tmp / "stage").exists():
@@ -175,20 +192,20 @@ def main():
         except OSError:
             shutil.copy2(p, q)
     if small:                                                     # resumable, split into several commits (large trees time out as one)
-        api.upload_large_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False,
-                                num_workers=int(os.environ.get("HF_UPLOAD_WORKERS", "2")))
+        hf_call(api.upload_large_folder, repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False,
+                num_workers=int(os.environ.get("HF_UPLOAD_WORKERS", "2")))
     for p, d in pairs:
         if p.stat().st_size >= BIG:
-            api.upload_file(path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")
+            hf_call(api.upload_file, path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")
     # verify
     want = {d: (p.stat().st_size, sha256(p), git_blob(p)) for p, d in pairs}
-    revision = api.repo_info(a.repo, repo_type="dataset").sha
+    revision = hf_call(api.repo_info, a.repo, repo_type="dataset").sha
     remote = {}
     # Verify only this snapshot; expanded recursive listings of all historical backups
     # use tiny pages and unnecessarily consume the shared API quota.
     paths = sorted(want)
     for start in range(0, len(paths), 100):
-        for e in api.get_paths_info(a.repo, paths[start:start + 100], repo_type="dataset", revision=revision):
+        for e in hf_call(api.get_paths_info, a.repo, paths[start:start + 100], repo_type="dataset", revision=revision):
             remote[e.path] = e
         if start + 100 < len(paths):
             time.sleep(1)
