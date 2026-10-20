@@ -32,6 +32,7 @@ H_MIN, H_MAX = 0.35, 1.15
 
 cfg = get_config(HE.HAB_CONFIG, overrides=[f"~{k}" for k in HE.STRETCH_ONLY])
 sc = habitat_sim.SimulatorConfiguration()
+sc.gpu_device_id = int(os.environ.get("GPU", "0"))
 sc.scene_id = "NONE"
 sc.enable_physics = False
 sim = habitat_sim.Simulator(habitat_sim.Configuration(sc, [habitat_sim.agent.AgentConfiguration()]))
