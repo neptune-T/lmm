@@ -19,7 +19,7 @@ Exit codes: 0 done, 3 non-finite loss (not retried by the scheduler), other = cr
 
     torchrun --nproc_per_node N sft_ovmm.py --config configs/alphabot2_pi05/sft_ovmm_balanced.yaml
 """
-import argparse, contextlib, json, math, os, shutil, sys, time
+import argparse, contextlib, hashlib, json, math, os, random, shutil, sys, time
 from pathlib import Path
 
 import numpy as np
@@ -67,8 +67,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--max-steps", type=int, default=0, help="override steps (smoke runs)")
+    ap.add_argument("--stop-after-step", type=int, default=0,
+                    help="checkpoint and exit at this step without changing the configured LR horizon or writing DONE")
     args = ap.parse_args()
     C = sampling.load_config(args.config)
+    config_sha = hashlib.sha256(json.dumps(C, sort_keys=True).encode()).hexdigest()
     ddp = "RANK" in os.environ
     if ddp:
         dist.init_process_group("nccl")
@@ -83,6 +86,7 @@ def main():
     O = C["optim"]
     torch.manual_seed(C["seed"] + rank)
     np.random.seed(C["seed"] + rank)
+    random.seed(C["seed"] + rank)
 
     resume = newest_ckpt(out)
     src = str(resume / "policy") if resume else C["init_checkpoint"]
@@ -117,8 +121,14 @@ def main():
     start = 0
     best = (float("inf"), -1)
     seen0 = 0
+    resume_rng = None
     if resume:
         st = torch.load(resume / "trainer.pt", map_location="cpu", weights_only=False)
+        if C.get("strict_resume"):
+            if ddp or st.get("config_sha256") != config_sha or not st.get("rng"):
+                raise RuntimeError("Strict single-GPU resume requires identical config and saved RNG state")
+            if st.get("sampler_next_micro_step") != st["step"] * accum:
+                raise RuntimeError("Checkpoint sampler position mismatch")
         if st.get("sharded_world"):                                     # per-rank ZeRO shards (multi-GPU checkpoint)
             if ddp and st["sharded_world"] == world:
                 sh = torch.load(resume / f"optim_rank{rank}.pt", map_location="cpu", weights_only=False)
@@ -129,6 +139,7 @@ def main():
         else:
             opt.load_state_dict(st["optimizer"])                        # consolidated (single-process) checkpoint
         start, best = st["step"], tuple(st["best"])
+        resume_rng = st.get("rng")
         # samples actually seen before this attempt (the world size may differ between attempts);
         # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
         seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * gb)
@@ -136,6 +147,7 @@ def main():
         info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
                  "state_dim": ovmm_model.state_dim(hist), "history": hist, "loss_cfg": loss_cfg, "delta_timestamps": dts,
                  "resume_from": str(resume) if resume else None, "start_step": start, "world": world, "samples_seen_at_start": seen0,
+                 "rng_restored": bool(resume_rng), "config_sha256": config_sha,
                  "global_batch": gb, "micro_batch_per_gpu": int(C["batch_per_gpu"]), "grad_accum": accum,
                  "planned_samples": gb * steps, "planned_effective_epochs": gb * steps / max(1, len(tr)),
                  "train_episodes": mtr.total_episodes, "train_frames": mtr.total_frames, "val_frames": len(va),
@@ -144,7 +156,8 @@ def main():
         print("INFO", json.dumps({k: v for k, v in info0.items() if k != "config"}, default=str), flush=True)
 
     loader = torch.utils.data.DataLoader(tr, batch_sampler=WeightedBatches(w, int(C["batch_per_gpu"]), int(C["seed"]), rank, start * accum),
-                                         num_workers=int(C["num_workers"]), pin_memory=True, persistent_workers=True)
+                                         num_workers=int(C["num_workers"]), pin_memory=True, persistent_workers=int(C["num_workers"]) > 0,
+                                         generator=torch.Generator().manual_seed(int(C["seed"])))
     vidx = np.random.default_rng(0).choice(len(va), size=min(512, len(va)), replace=False)
     vloader = torch.utils.data.DataLoader(torch.utils.data.Subset(va, vidx.tolist()), batch_size=int(C["batch_per_gpu"]),
                                           shuffle=False, num_workers=4)
@@ -161,6 +174,8 @@ def main():
             b = ovmm_model.apply_history(b, hist)
             with amp:
                 loss, inf = ovmm_model.masked_loss(policy, pre(b), b["action_is_pad"])
+            if not torch.isfinite(loss):
+                raise RuntimeError("Non-finite validation loss")
             k = len(b["action"])
             tot, n = tot + float(loss) * k, n + k
             pdim += np.asarray(inf["loss_per_dim"]) * k
@@ -193,7 +208,12 @@ def main():
             save_policy(d / "policy")
             torch.save({"optimizer": None if ddp else opt.state_dict(), "sharded_world": world if ddp else None,
                         "step": step, "best": list(best),
-                        "samples_seen": seen0 + (step - start) * gb}, d / "trainer.pt")
+                        "samples_seen": seen0 + (step - start) * gb,
+                        "config_sha256": config_sha,
+                        "sampler_next_micro_step": step * accum,
+                        "scheduler": {"next_step": step, "horizon": steps, "optim": O},
+                        "rng": {"torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state(),
+                                "numpy": np.random.get_state(), "python": random.getstate()}}, d / "trainer.pt")
             (d / "COMPLETE").write_text(time.strftime("%F %T"))
             for old in sorted(p for p in out.glob("ckpt_step*") if (p / "COMPLETE").exists())[:-int(C["keep_ckpts"])]:
                 shutil.rmtree(old, ignore_errors=True)
@@ -202,6 +222,11 @@ def main():
 
     policy.train()
     it = iter(loader)
+    if resume_rng:
+        torch.set_rng_state(resume_rng["torch"])
+        torch.cuda.set_rng_state(resume_rng["cuda"])
+        np.random.set_state(resume_rng["numpy"])
+        random.setstate(resume_rng["python"])
     t_log, n_log = time.time(), 0
     for step in range(start + 1, steps + 1):
         lr = lr_at(step - 1, O["lr"], O["warmup"], steps, O["decay_lr"])
@@ -219,6 +244,8 @@ def main():
                     sys.exit(3)
                 (loss / accum).backward()
         gn = float(torch.nn.utils.clip_grad_norm_(params, O["grad_clip"]))
+        if not math.isfinite(gn):
+            raise RuntimeError(f"Non-finite gradient norm at step {step}")
         opt.step()
         opt.zero_grad(set_to_none=True)
         n_log += len(batch["action"]) * world * accum
@@ -247,8 +274,15 @@ def main():
                 b = torch.tensor([best[0], best[1]], dtype=torch.double, device=dev)
                 dist.broadcast(b, 0)
                 best = (float(b[0]), int(b[1]))
-        if C.get("resumable", True) and (step % int(C["ckpt_every"]) == 0 or step == steps):
+        if C.get("resumable", True) and (step % int(C["ckpt_every"]) == 0 or step == steps or step == args.stop_after_step):
             checkpoint(step)                                              # resumable=false (short sweeps): best only
+        if step == args.stop_after_step and step < steps:
+            if rank == 0:
+                print("CHECKPOINT_PAUSE", step, flush=True)
+            if ddp:
+                dist.barrier()
+                dist.destroy_process_group()
+            return
     if rank == 0:
         if C.get("save_last", True):
             save_policy(out / "last")
