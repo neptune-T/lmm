@@ -25,7 +25,15 @@ files = [f for f in api.list_repo_tree(REPO, revision=rev, recursive=True) if ge
 def get(f):
     out = os.path.join(ck, f.path)
     if os.path.exists(out) and os.path.getsize(out) == f.size:
-        return "skip"
+        h = hashlib.sha256()
+        blob = hashlib.sha1(f"blob {f.size}\0".encode())
+        with open(out, "rb") as source:
+            for c in iter(lambda: source.read(1 << 24), b""):
+                h.update(c)
+                blob.update(c)
+        if (f.lfs is not None and h.hexdigest() == f.lfs.sha256) or (
+                f.lfs is None and blob.hexdigest() == f.blob_id):
+            return "verified-existing"
     os.makedirs(os.path.dirname(out), exist_ok=True)
     url = f"{ep}/{REPO}/resolve/{rev}/{urllib.request.quote(f.path)}"
     for i in range(6):

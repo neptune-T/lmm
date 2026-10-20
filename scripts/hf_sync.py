@@ -17,7 +17,7 @@ evaluation result and code change, run this; a task is backed up only when this 
   listed and every file's size (and LFS sha256 where available) must match, else exit 1.
 Token: $HF_TOKEN, else ~/.cache/huggingface/token, else /root/.config/hf_token_write (never printed or written).
 """
-import argparse, hashlib, json, os, re, subprocess, sys, time
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -30,7 +30,8 @@ BIG = 4 << 30                                                     # files above 
 def token():
     if os.environ.get("HF_TOKEN"):
         return os.environ["HF_TOKEN"]
-    for p in (Path.home() / ".cache/huggingface/token", Path("/root/.config/hf_token_write")):
+    for p in (Path(os.environ.get("HF_TOKEN_PATH", Path.home() / ".config/lmm/hf_token")),
+              Path.home() / ".cache/huggingface/token", Path("/root/.config/hf_token_write")):
         if p.exists():
             return p.read_text().strip()
     sys.exit("no HF token (HF_TOKEN, ~/.cache/huggingface/token or /root/.config/hf_token_write)")
@@ -46,7 +47,41 @@ def sha256(p):
 
 def files_of(src):
     src = Path(src)
+    if not src.exists() or src.is_symlink():
+        raise ValueError(f"missing or symlink source: {src}")
     return [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file() and not p.is_symlink())
+
+
+def verify_file(entry, size, sha256_hex, git_blob_hex):
+    """LFS objects use SHA256; ordinary Git files use the blob SHA1 (not just size)."""
+    if entry is None or entry.size != size:
+        return False
+    lfs = getattr(entry, "lfs", None)
+    return (getattr(lfs, "sha256", None) == sha256_hex if lfs
+            else getattr(entry, "blob_id", None) == git_blob_hex)
+
+
+def git_blob(p):
+    h = hashlib.sha1(f"blob {p.stat().st_size}\0".encode())
+    with p.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 22), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def scan_git(g):
+    # A compressed bundle cannot be checked by scanning its bytes. Inspect every reachable blob first.
+    objects = subprocess.check_output(["git", "-C", g, "rev-list", "--objects", "--all"], text=True)
+    for line in objects.splitlines():
+        oid = line.split(" ", 1)[0]
+        kind = subprocess.check_output(["git", "-C", g, "cat-file", "-t", oid], text=True).strip()
+        if kind != "blob":
+            continue
+        size = int(subprocess.check_output(["git", "-C", g, "cat-file", "-s", oid]))
+        if size <= TEXT_MAX:
+            data = subprocess.check_output(["git", "-C", g, "cat-file", "blob", oid])
+            if SECRET.search(data):
+                sys.exit(f"refused: secret-like content in git object {oid}")
 
 
 def scan(paths):
@@ -64,19 +99,25 @@ def main():
     ap.add_argument("--repo", default="Neptune-T/lmm-alphabot2-ovmm-runs")
     ap.add_argument("--tag", required=True)
     ap.add_argument("--git", action="append", default=[])
+    ap.add_argument("--receipt", help="Write a verified receipt outside the backed-up sources.")
     ap.add_argument("items", nargs="*")
     a = ap.parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", a.tag) or a.tag in (".", ".."):
+        sys.exit("invalid backup tag")
     api = HfApi(token=token())
     api.create_repo(a.repo, repo_type="dataset", private=True, exist_ok=True)
     if not api.repo_info(a.repo, repo_type="dataset").private:
         sys.exit(f"refused: {a.repo} is public")
     tmp = Path(os.environ.get("HF_SYNC_STAGE", Path.home() / ".cache/hf_sync_stage")) / a.tag   # stable: re-runs resume
     if (tmp / "stage").exists():
-        import shutil
-        shutil.rmtree(tmp / "stage" / "backups", ignore_errors=True)   # re-link current files; upload cache is kept
+        # Retain upload metadata but never accidentally upload stale files from an earlier invocation.
+        for p in (tmp / "stage").iterdir():
+            if p.name != ".cache":
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
     tmp.mkdir(parents=True, exist_ok=True)
     pairs = []                                                    # (local file, path in repo)
     for g in a.git:
+        scan_git(g)
         sha = subprocess.check_output(["git", "-C", g, "rev-parse", "--short", "HEAD"], text=True).strip()
         b = tmp / f"{Path(g).resolve().name}_{sha}.bundle"
         subprocess.check_call(["git", "-C", g, "bundle", "create", str(b), "--all"], stderr=subprocess.DEVNULL)
@@ -84,6 +125,8 @@ def main():
     for it in a.items:
         src, _, dest = it.partition(":")
         dest = dest or f"backups/{a.tag}/{Path(src).name}"
+        if dest.startswith("/") or ".." in Path(dest).parts:
+            sys.exit("invalid repository destination")
         s = Path(src)
         for p in files_of(s):
             pairs.append((p, dest if s.is_file() else f"{dest}/{p.relative_to(s).as_posix()}"))
@@ -91,10 +134,32 @@ def main():
     # download caches: locks / metadata) are excluded explicitly and listed in the manifest, not silently lost
     excluded = [str(p) for p, d in pairs if "/.cache/huggingface/" in f"/{d}"]
     pairs = [(p, d) for p, d in pairs if "/.cache/huggingface/" not in f"/{d}"]
+    if not pairs or len({d for _, d in pairs}) != len(pairs):
+        sys.exit("empty backup or duplicate repository destinations")
+    forbidden = {".env", ".netrc", "token", "stored_tokens", "hf_token", "hf_token_write", "credentials"}
+    if any(p.name in forbidden or ".ssh" in p.parts for p, _ in pairs):
+        sys.exit("refused: credential file in sources")
     bad = scan([p for p, _ in pairs])
     if bad:
         sys.exit(f"refused: secret-like content in {bad[:5]}")
-    man = [{"path": d, "size": p.stat().st_size, "sha256": sha256(p), "source": str(p)} for p, d in pairs]
+    # Copy a stable snapshot. Hardlinks let an active writer silently mutate an in-flight backup.
+    snapshot = tmp / "snapshot"
+    snapshot.mkdir(exist_ok=True)
+    frozen = []
+    for i, (p, d) in enumerate(pairs):
+        before = p.stat()
+        q = snapshot / str(i)
+        shutil.copy2(p, q)
+        after = p.stat()
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns) or sha256(p) != sha256(q):
+            sys.exit(f"source changed during snapshot: {p}")
+        frozen.append((q, d))
+    sources = [str(p) for p, _ in pairs]
+    pairs = frozen
+    if scan([p for p, _ in pairs]):
+        sys.exit("refused: secret-like content in snapshot")
+    man = [{"path": d, "size": p.stat().st_size, "sha256": sha256(p), "git_blob": git_blob(p),
+            "source": sources[i]} for i, (p, d) in enumerate(pairs)]
     mf = tmp / "MANIFEST.json"
     mf.write_text(json.dumps({"tag": a.tag, "time": time.strftime("%F %T"), "host": os.uname().nodename, "files": man,
                               "excluded_hf_cache_files": excluded}, indent=1))
@@ -108,7 +173,6 @@ def main():
         try:
             os.link(p, q)
         except OSError:
-            import shutil
             shutil.copy2(p, q)
     if small:                                                     # resumable, split into several commits (large trees time out as one)
         api.upload_large_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False)
@@ -116,16 +180,23 @@ def main():
         if p.stat().st_size >= BIG:
             api.upload_file(path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")
     # verify
-    shas = {m["path"]: m["sha256"] for m in man}
-    want = {d: (p.stat().st_size, shas.get(d)) for p, d in pairs}
+    want = {d: (p.stat().st_size, sha256(p), git_blob(p)) for p, d in pairs}
+    revision = api.repo_info(a.repo, repo_type="dataset").sha
     remote = {}
     for top in sorted({d.split("/")[0] for d in want}):
-        for e in api.list_repo_tree(a.repo, repo_type="dataset", path_in_repo=top, recursive=True, expand=True):
+        for e in api.list_repo_tree(a.repo, repo_type="dataset", revision=revision, path_in_repo=top, recursive=True, expand=True):
             if hasattr(e, "size") and e.size is not None and not hasattr(e, "tree_id"):
-                remote[e.path] = (e.size, getattr(e.lfs, "sha256", None) if getattr(e, "lfs", None) else None)
-    bad = [d for d, (sz, sh) in want.items() if d not in remote or remote[d][0] != sz or (sh and remote[d][1] and remote[d][1] != sh)]
-    print(json.dumps({"repo": a.repo, "tag": a.tag, "files": len(pairs), "bytes": sum(p.stat().st_size for p, _ in pairs),
-                      "verified": len(pairs) - len(bad), "mismatch": bad[:10]}))
+                remote[e.path] = e
+    bad = [d for d, (sz, sh, blob) in want.items() if not verify_file(remote.get(d), sz, sh, blob)]
+    receipt = {"repo": a.repo, "revision": revision, "tag": a.tag, "files": len(pairs),
+               "bytes": sum(p.stat().st_size for p, _ in pairs),
+               "verified": len(pairs) - len(bad), "mismatch": bad[:10]}
+    if not bad and a.receipt:
+        dst = Path(a.receipt)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.with_suffix(dst.suffix + ".tmp").write_text(json.dumps(receipt, indent=2) + "\n")
+        dst.with_suffix(dst.suffix + ".tmp").replace(dst)
+    print(json.dumps(receipt))
     sys.exit(1 if bad else 0)
 
 

@@ -1,5 +1,11 @@
 # LMM / AlphaBot 2 OVMM: status, lessons and recovery plan (2026-10-19)
 
+> **2026-10-20 recovery update:** the historical status below is not live server state.
+> Read [recovery_20261020.md](recovery_20261020.md) first. New host access is verified; all GPUs
+> are occupied, and the user selected GPU7 only. HF contains code/results, not v2 weights.
+> Reconstruction is authorized; no automatic frontier/RL. Do not reuse old launch commands,
+> keep-alive rules or template loss weights without the new recovery gates.
+
 ## 1. Where the project stands
 
 | Item | State |

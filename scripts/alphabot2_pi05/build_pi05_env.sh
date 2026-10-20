@@ -8,7 +8,7 @@ E=${PI05_ENV:-/mnt/cfs/h0ddz1/personal/liyanjun/yanjun/envs/alphabot2_pi05}
 W=$(dirname "$E")/_build_alphabot2_pi05
 mkdir -p "$W/tmp" "$W/pipcache"
 export TMPDIR=$W/tmp PIP_CACHE_DIR=$W/pipcache HF_HOME=$W/hf_home
-[ -x "$E/bin/python" ] || python3.12 -m venv "$E"
+[ -x "$E/bin/python" ] || "${PYTHON_BOOTSTRAP:-python3.12}" -m venv "$E"
 P=$E/bin/python
 TUNA="-i https://pypi.tuna.tsinghua.edu.cn/simple"
 $P -m pip install -q -U pip $TUNA
@@ -27,5 +27,6 @@ print("ENV_OK torch", torch.__version__, "cuda_build", torch.version.cuda, "lero
       "images", list(cfg.image_features))
 PY
 $P -m pip freeze > "$(dirname "$E")/alphabot2_pi05.pip-freeze.txt"
-mkdir -p /workspace/runtime/archive && cp "$(dirname "$E")/alphabot2_pi05.pip-freeze.txt" /workspace/runtime/archive/
+ARCHIVE=${PI05_ARCHIVE_DIR:-/workspace/runtime/archive}
+mkdir -p "$ARCHIVE" && cp "$(dirname "$E")/alphabot2_pi05.pip-freeze.txt" "$ARCHIVE/"
 echo "###PI05_ENV_DONE### $E"
