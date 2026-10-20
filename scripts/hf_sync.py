@@ -175,7 +175,8 @@ def main():
         except OSError:
             shutil.copy2(p, q)
     if small:                                                     # resumable, split into several commits (large trees time out as one)
-        api.upload_large_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False)
+        api.upload_large_folder(repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False,
+                                num_workers=int(os.environ.get("HF_UPLOAD_WORKERS", "2")))
     for p, d in pairs:
         if p.stat().st_size >= BIG:
             api.upload_file(path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")
@@ -183,10 +184,14 @@ def main():
     want = {d: (p.stat().st_size, sha256(p), git_blob(p)) for p, d in pairs}
     revision = api.repo_info(a.repo, repo_type="dataset").sha
     remote = {}
-    for top in sorted({d.split("/")[0] for d in want}):
-        for e in api.list_repo_tree(a.repo, repo_type="dataset", revision=revision, path_in_repo=top, recursive=True, expand=True):
-            if hasattr(e, "size") and e.size is not None and not hasattr(e, "tree_id"):
-                remote[e.path] = e
+    # Verify only this snapshot; expanded recursive listings of all historical backups
+    # use tiny pages and unnecessarily consume the shared API quota.
+    paths = sorted(want)
+    for start in range(0, len(paths), 100):
+        for e in api.get_paths_info(a.repo, paths[start:start + 100], repo_type="dataset", revision=revision):
+            remote[e.path] = e
+        if start + 100 < len(paths):
+            time.sleep(1)
     bad = [d for d, (sz, sh, blob) in want.items() if not verify_file(remote.get(d), sz, sh, blob)]
     receipt = {"repo": a.repo, "revision": revision, "tag": a.tag, "files": len(pairs),
                "bytes": sum(p.stat().st_size for p, _ in pairs),
