@@ -63,6 +63,18 @@ def newest_ckpt(out):
     return c[-1] if c else None
 
 
+def capture_rng():
+    return {"torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state(),
+            "numpy": np.random.get_state(), "python": random.getstate()}
+
+
+def restore_rng(state):
+    torch.set_rng_state(state["torch"])
+    torch.cuda.set_rng_state(state["cuda"])
+    np.random.set_state(state["numpy"])
+    random.setstate(state["python"])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -212,8 +224,7 @@ def main():
                         "config_sha256": config_sha,
                         "sampler_next_micro_step": step * accum,
                         "scheduler": {"next_step": step, "horizon": steps, "optim": O},
-                        "rng": {"torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state(),
-                                "numpy": np.random.get_state(), "python": random.getstate()}}, d / "trainer.pt")
+                        "rng": None if ddp else capture_rng()}, d / "trainer.pt")
             (d / "COMPLETE").write_text(time.strftime("%F %T"))
             for old in sorted(p for p in out.glob("ckpt_step*") if (p / "COMPLETE").exists())[:-int(C["keep_ckpts"])]:
                 shutil.rmtree(old, ignore_errors=True)
@@ -223,10 +234,7 @@ def main():
     policy.train()
     it = iter(loader)
     if resume_rng:
-        torch.set_rng_state(resume_rng["torch"])
-        torch.cuda.set_rng_state(resume_rng["cuda"])
-        np.random.set_state(resume_rng["numpy"])
-        random.setstate(resume_rng["python"])
+        restore_rng(resume_rng)
     t_log, n_log = time.time(), 0
     for step in range(start + 1, steps + 1):
         lr = lr_at(step - 1, O["lr"], O["warmup"], steps, O["decay_lr"])
