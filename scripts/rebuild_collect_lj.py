@@ -188,6 +188,23 @@ def scene_order(items):
     return out
 
 
+def qualification_lists(units):
+    """Reserve disjoint train bases; readiness never depends on rollout outcomes."""
+    candidates = [u for u in units if u["replica"] == 0 and split_of(u["episode_id"]) == "train"]
+    used, result = set(), {}
+    for mode, n in (("left", 5), ("right", 5), ("auto", 8)):
+        pick = [u for u in candidates if u["episode_id"] not in used
+                and (mode == "auto" or mode in u["feasible_arms"])][:n]
+        if len(pick) != n:
+            return None
+        used.update(u["episode_id"] for u in pick)
+        result[f"qual_{mode}"] = pick
+    pilot = [u for u in candidates if u["episode_id"] not in used][:80]
+    if len(pilot) < 40:
+        return None
+    return {**result, "pilot": pilot, "excluded_qualification_bases": sorted(used)}
+
+
 def reject_engineering(d):
     bad = [r for r in rows(d) if r.get("engineering_error")]
     if bad:
@@ -291,25 +308,20 @@ def main():
             gate(d, "embodiment", d / "emb", d / "input_geometry.json", d / "units.json")
         return stage(f"screen_{i:04d}", work)
     units = []
-    for i in range(min(4, (len(pool) + 63) // 64)):
+    # Four shards were an unverified capacity estimate, not a data-quality gate.
+    # Continue the same frozen order until existing disjoint-base minima are met.
+    for i in range((len(pool) + 63) // 64):
         sd = screen_chunk(i, pool[i * 64:(i + 1) * 64])
         units += json.loads((sd / "units.json").read_text())
+        if i >= 3 and qualification_lists(units) is not None:
+            break
 
     def lists(d):
-        candidates = [u for u in units if u["replica"] == 0 and split_of(u["episode_id"]) == "train"]
-        used = set()
-        for mode, n in (("left", 5), ("right", 5), ("auto", 8)):
-            pick = [u for u in candidates if u["episode_id"] not in used
-                    and (mode == "auto" or mode in u["feasible_arms"])][:n]
-            if len(pick) != n:
-                raise RuntimeError(f"Not enough feasible {mode} qualification episodes in initial pool")
-            used.update(u["episode_id"] for u in pick)
-            dump(d / f"qual_{mode}.json", pick)
-        pilot = [u for u in candidates if u["episode_id"] not in used][:80]
-        if len(pilot) < 40:
-            raise RuntimeError("Fewer than 40 independent pilot candidates; inspect screen results")
-        dump(d / "excluded_qualification_bases.json", sorted(used))
-        dump(d / "pilot.json", pilot)
+        selected = qualification_lists(units)
+        if selected is None:
+            raise RuntimeError("Frozen geometry pool exhausted before qualification/pilot minima")
+        for name, value in selected.items():
+            dump(d / f"{name}.json", value)
     ld = stage("lists_frozen", lists)
     excluded = set(json.loads((ld / "excluded_qualification_bases.json").read_text()))
 

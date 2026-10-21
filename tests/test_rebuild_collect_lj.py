@@ -65,5 +65,31 @@ class RecoveryBoundaries(unittest.TestCase):
         self.assertEqual(len({r["scene"] for r in a[:3]}), 3)
 
 
+class CandidateCapacity(unittest.TestCase):
+    def units(self, n):
+        bases = [str(i) for i in range(500) if M.split_of(str(i)) == "train"][:n]
+        return [{"episode_id": e, "replica": r, "unit": f"{e}#{r}",
+                 "feasible_arms": ["left", "right"]} for e in bases for r in range(3)]
+
+    def test_replicas_cannot_replace_independent_bases(self):
+        self.assertIsNone(M.qualification_lists(self.units(57)))
+        result = M.qualification_lists(self.units(58))
+        self.assertEqual(len(result["pilot"]), 40)
+        self.assertEqual(len(result["excluded_qualification_bases"]), 18)
+        self.assertTrue(set(result["excluded_qualification_bases"]).isdisjoint(
+            u["episode_id"] for u in result["pilot"]))
+        self.assertTrue(all(u["replica"] == 0 for u in result["pilot"]))
+
+    def test_heldout_bases_and_missing_arm_cannot_fill_shortfall(self):
+        units = self.units(57)
+        heldout = next(str(i) for i in range(500) if M.split_of(str(i)) == "val")
+        units.append({"episode_id": heldout, "replica": 0, "feasible_arms": ["left", "right"]})
+        self.assertIsNone(M.qualification_lists(units))
+        units = self.units(80)
+        for u in units:
+            u["feasible_arms"] = ["left"]
+        self.assertIsNone(M.qualification_lists(units))
+
+
 if __name__ == "__main__":
     unittest.main()
