@@ -26,6 +26,7 @@ REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
 from lmm.embodiments.alphabot2.habitat import snapshot as SN  # noqa: E402
+from lmm.embodiments.alphabot2.timing_verdict import classify, summarize  # noqa: E402
 
 CONCUR = bool(int(os.environ.get("CONCUR_RENDER", "0")))
 env = HE.make_env(gpu=int(os.environ.get("GPU", "0")), split=os.environ.get("SPLIT", "train"),
@@ -85,6 +86,7 @@ R["robot_motion"] = {"per_camera_best_at_0": {k: (sum(v), len(v)) for k, v in ok
 # ---------------- test 2: falling object (physics)
 HE.reset_to(env, EP)
 HE.fix_start(env)
+rob = HE.robot(env)  # reset_to hard-rebuilds the world; discard old robot handles
 sim = env.sim
 rom = sim.get_rigid_object_manager()
 obj = rom.get_object_by_id(sim.scene_obj_ids[int(sim.get_targets()[0][0])])
@@ -96,25 +98,33 @@ obj.motion_type = __import__("habitat_sim").physics.MotionType.DYNAMIC
 obj.collidable = True
 obj.translation = mn.Vector3(*p0)
 obj.linear_velocity = mn.Vector3(0, 0, 0)
+obj.angular_velocity = mn.Vector3(0, 0, 0)
 fall = []
 hold = HE.hold_action(env)
 for t in range(8):
     obs = HE.step18(env, hold)
     fall.append({"img": small(obs["head_rgb"]), "pose": np.array(obj.translation), "rot": obj.rotation,
-                 "y": float(obj.translation[1])})
-f_ok, f_rows = [], []
+                 "y": float(obj.translation[1]), "snap": SN.capture(env)})
+# Restore the complete world, including the current robot and other moving objects.
+f_refs = []
+for record in fall:
+    SN.restore(env, record["snap"])
+    f_refs.append(render_now()["head_rgb"])
+f_rows = []
 for i in range(1, len(fall) - 1):
-    refs_f = {}
-    for o in (-1, 0, 1):
-        obj.translation = mn.Vector3(*fall[i + o]["pose"])
-        obj.rotation = fall[i + o]["rot"]
-        refs_f[o] = render_now()["head_rgb"]
-    d = {o: float(np.abs(fall[i]["img"] - refs_f[o]).mean()) for o in refs_f}
-    best = min(d, key=d.get)
-    f_rows.append({"t": i, "best": best, "err": {o: round(v, 3) for o, v in d.items()}, "drop_m": round(fall[i - 1]["y"] - fall[i]["y"], 3)})
-    f_ok.append(best == 0)
-R["falling_object"] = {"best_at_0": (sum(f_ok), len(f_ok)), "rows": f_rows}
-R["synchronized"] = bool(all(len(v) >= 5 and all(v) for v in ok.values()) and all(f_ok)
+    refs_f = {o: f_refs[i + o] for o in (-1, 0, 1)}
+    def errors(image):
+        return {o: float(np.abs(image - ref).mean()) for o, ref in refs_f.items()}
+    sep = min(float(np.abs(refs_f[o] - refs_f[0]).mean()) for o in (-1, 1))
+    d = errors(fall[i]["img"])
+    # Real recorded images shifted by one frame, not generated look-alike controls.
+    controls = {str(o): classify(errors(fall[i + o]["img"]), sep) for o in (-1, 1)}
+    f_rows.append({"t": i, "err": d, "separation": sep, "status": classify(d, sep),
+                   "negative_controls": controls,
+                   "drop_m": fall[i - 1]["y"] - fall[i]["y"]})
+R["falling_object"] = {**summarize(f_rows), "rows": f_rows}
+R["synchronized"] = bool(all(len(v) >= 5 and all(v) for v in ok.values())
+                         and R["falling_object"]["pass"]
                          and R["robot_motion"]["proprio_obs_equals_state"])
 print("###SYNC###" + json.dumps(R, default=str), flush=True)
 env.close()
