@@ -30,6 +30,11 @@ import glob, json, os, subprocess, sys, time, traceback, zlib
 
 import numpy as np
 
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bounded_collection_workers import launch_if_configured
+launch_if_configured(Path(__file__).resolve(), 'collect')
+
 REPO = os.environ.get("LMM_REPO", "/workspace/lmm")
 sys.path.insert(0, REPO)
 from lmm.embodiments.alphabot2.habitat import env as HE  # noqa: E402
