@@ -11,6 +11,27 @@ spec.loader.exec_module(sync)
 
 
 class BackupIntegrity(unittest.TestCase):
+    def test_permanent_quota_error_exits_without_upload_loop(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "data"
+            p.write_bytes(b"immutable")
+            error = RuntimeError("private quota exhausted")
+            error.response = SimpleNamespace(status_code=403, headers={})
+            api = Mock()
+            api.create_commit.side_effect = error
+            with patch.object(sync.time, "sleep") as sleep:
+                with self.assertRaisesRegex(RuntimeError, "private quota"):
+                    sync.upload_closed_snapshot(api, "owner/private", [(p, "data")], "test")
+                sleep.assert_not_called()
+            self.assertEqual(api.create_commit.call_count, 1)
+
+    def test_configured_credential_precedes_stale_inherited_environment(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "credential"
+            p.write_text("fixture-new")
+            with patch.dict(sync.os.environ, {"HF_TOKEN": "fixture-old"}):
+                self.assertEqual(sync.token(str(p)), "fixture-new")
+
     def test_rate_limit_respects_server_delay(self):
         error = RuntimeError("rate limited")
         error.response = SimpleNamespace(status_code=429, headers={"Retry-After": "69"})

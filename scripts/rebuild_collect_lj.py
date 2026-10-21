@@ -50,7 +50,7 @@ def receipt_ok(p):
     if not p.exists():
         return False
     r = json.loads(p.read_text())
-    if (r.get("repo") != "Neptune-T/lmm-alphabot2-ovmm-runs" or not r.get("revision")
+    if (r.get("repo") not in {"Neptune-T/lmm-alphabot2-ovmm-runs", "yuliuyu/lmm-alphabot2-ovmm-runs"} or not r.get("revision")
             or not r.get("files") or r.get("verified") != r["files"] or r.get("mismatch") != []):
         raise RuntimeError(f"Invalid verified receipt: {p}")
     return True

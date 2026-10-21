@@ -20,7 +20,7 @@ Token: $HF_TOKEN, else ~/.cache/huggingface/token, else /root/.config/hf_token_w
 import argparse, hashlib, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, CommitOperationAdd
 
 SECRET = re.compile(rb"hf_[A-Za-z0-9]{30,}|wandb_v1_[A-Za-z0-9_]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----")
 TEXT_MAX = 20 << 20
@@ -44,7 +44,22 @@ def hf_call(fn, *args, **kwargs):
             time.sleep(delay)
 
 
-def token():
+def backup_target():
+    """External routing config contains a credential PATH, never a credential value."""
+    p = Path(os.environ.get("HF_SYNC_CONFIG", Path.home() / ".config/lmm/hf_backup_target.json"))
+    if not p.exists():
+        return {"repo": "Neptune-T/lmm-alphabot2-ovmm-runs", "token_path": None}
+    target = json.loads(p.read_text())
+    if set(target) != {"repo", "token_path"} or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", target["repo"]):
+        raise ValueError("Invalid external HF backup destination")
+    if not Path(target["token_path"]).is_absolute():
+        raise ValueError("HF credential path must be absolute")
+    return target
+
+
+def token(preferred_path=None):
+    if preferred_path is not None:
+        return Path(preferred_path).read_text().strip()
     if os.environ.get("HF_TOKEN"):
         return os.environ["HF_TOKEN"]
     for p in (Path(os.environ.get("HF_TOKEN_PATH", Path.home() / ".config/lmm/hf_token")),
@@ -52,6 +67,17 @@ def token():
         if p.exists():
             return p.read_text().strip()
     sys.exit("no HF token (HF_TOKEN, ~/.cache/huggingface/token or /root/.config/hf_token_write)")
+
+
+def upload_closed_snapshot(api, repo, files, tag):
+    """Bounded commits: permanent auth/quota errors fail instead of retrying forever."""
+    for start in range(0, len(files), 100):
+        batch = files[start:start + 100]
+        # Reconstruct operations on each retry; the HF client mutates commit operations.
+        hf_call(lambda: api.create_commit(repo_id=repo, repo_type="dataset",
+            operations=[CommitOperationAdd(path_in_repo=d, path_or_fileobj=str(p)) for p, d in batch],
+            commit_message=f"backup {tag}: files {start}-{start + len(batch)}",
+            num_threads=int(os.environ.get("HF_UPLOAD_WORKERS", "2"))))
 
 
 def sha256(p):
@@ -112,8 +138,9 @@ def scan(paths):
 
 
 def main():
+    target = backup_target()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default="Neptune-T/lmm-alphabot2-ovmm-runs")
+    ap.add_argument("--repo", default=target["repo"])
     ap.add_argument("--tag", required=True)
     ap.add_argument("--git", action="append", default=[])
     ap.add_argument("--receipt", help="Write a verified receipt outside the backed-up sources.")
@@ -121,11 +148,11 @@ def main():
     a = ap.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", a.tag) or a.tag in (".", ".."):
         sys.exit("invalid backup tag")
-    api = HfApi(token=token())
+    api = HfApi(token=token(target["token_path"]))
     hf_call(api.create_repo, a.repo, repo_type="dataset", private=True, exist_ok=True)
     if not hf_call(api.repo_info, a.repo, repo_type="dataset").private:
         sys.exit(f"refused: {a.repo} is public")
-    tmp = Path(os.environ.get("HF_SYNC_STAGE", Path.home() / ".cache/hf_sync_stage")) / a.tag   # stable: re-runs resume
+    tmp = Path(os.environ.get("HF_SYNC_STAGE", Path.home() / ".cache/hf_sync_stage")) / a.repo.replace("/", "--") / a.tag
     if (tmp / "stage").exists():
         # Retain upload metadata but never accidentally upload stale files from an earlier invocation.
         for p in (tmp / "stage").iterdir():
@@ -191,9 +218,8 @@ def main():
             os.link(p, q)
         except OSError:
             shutil.copy2(p, q)
-    if small:                                                     # resumable, split into several commits (large trees time out as one)
-        hf_call(api.upload_large_folder, repo_id=a.repo, repo_type="dataset", folder_path=str(stage), print_report=False,
-                num_workers=int(os.environ.get("HF_UPLOAD_WORKERS", "2")))
+    if small:
+        upload_closed_snapshot(api, a.repo, small, a.tag)
     for p, d in pairs:
         if p.stat().st_size >= BIG:
             hf_call(api.upload_file, path_or_fileobj=str(p), path_in_repo=d, repo_id=a.repo, repo_type="dataset", commit_message=f"backup {a.tag}: {d}")

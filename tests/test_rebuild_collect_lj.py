@@ -58,6 +58,17 @@ class RecoveryBoundaries(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Invalid verified receipt"):
             M.stage("one", lambda _: self.fail("Invalid receipt must block"))
 
+    def test_receipt_migration_keeps_integrity_and_destination_checks(self):
+        p = self.out / "receipts" / "migration.json"
+        r = {"repo": "yuliuyu/lmm-alphabot2-ovmm-runs", "revision": "new-revision",
+             "files": 2, "verified": 2, "mismatch": []}
+        M.dump(p, r)
+        self.assertTrue(M.receipt_ok(p))
+        for bad in ({**r, "verified": 1}, {**r, "repo": "unapproved/other"}):
+            M.dump(p, bad)
+            with self.assertRaises(RuntimeError):
+                M.receipt_ok(p)
+
     def test_geometry_order_is_stable_before_outcomes(self):
         rs = [{"episode_id": str(i), "scene": str(i % 3)} for i in range(30)]
         a = M.scene_order(rs)
