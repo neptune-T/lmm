@@ -164,6 +164,7 @@ if kind == "snapshot":
             continue
         sib = r["siblings"]
         checks = {
+            "fresh_simulator_restore": r.get("restore_mode") == "fresh_simulator_event_prefix",
             "readback_restore0": within(r["restore0_equals_S"], SNAP_TOL["readback"]),
             "readback_restore1": within(r["restore1_equals_S"], SNAP_TOL["readback"]),
             "grasp_state_after_restore": all(r[f"restore{i}_equals_S"]["held_equal"] for i in (0, 1)),
@@ -181,6 +182,7 @@ if kind == "snapshot":
     exact = all(all(p["replay_vs_replay"][k] == 0.0 for k in ("root_pos_m", "root_rot_deg", "proprio_max_abs",
                                                               "objects_pos_max_m", "objects_rot_max_deg")) for p in per)
     emit("snapshot", len(per) >= 3 and not bad, n=len(per), problems=bad, tolerances=SNAP_TOL,
+         restore_mode="fresh_simulator_event_prefix", in_place_snapshot_qualified=False,
          verdict=("NOT_READY" if bad else "EXACT_BRANCHING" if exact else "USABLE_WITH_TOLERANCE"), episodes=per)
 
 if kind == "pilot":
