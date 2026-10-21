@@ -11,6 +11,16 @@ import rebuild_train_lj as driver
 
 
 class PipelineTests(unittest.TestCase):
+    def test_user_hold_blocks_start_and_commands(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(driver, "RUN", Path(tmp)), \
+                patch.object(driver.subprocess, "Popen") as popen:
+            (Path(tmp) / "TRAINING_PAUSED_BY_USER.json").write_text("{}")
+            with self.assertRaisesRegex(RuntimeError, "Training paused by user"):
+                driver.main()
+            with self.assertRaisesRegex(RuntimeError, "Training paused by user"):
+                driver.command(Path(tmp), "train", ["never-run"])
+            popen.assert_not_called()
+
     def manifest(self):
         m = {"dataset_version": "lj_recollect_20261020-test", "excluded_episodes": []}
         for split, n in (("train", 2000), ("val", 100)):

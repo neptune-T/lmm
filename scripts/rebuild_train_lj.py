@@ -29,6 +29,11 @@ dump = collection.dump
 receipt_ok = collection.receipt_ok
 
 
+def require_training_authorized():
+    if (RUN / "TRAINING_PAUSED_BY_USER.json").exists():
+        raise RuntimeError("Training paused by user: data recovery only; new authorization required")
+
+
 def event(kind, **kw):
     rec = {"time": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": kind, **kw}
     print(json.dumps(rec), flush=True)
@@ -59,6 +64,7 @@ def require_capacity(gpu=False):
 def wait_gpu():
     announced = False
     while True:
+        require_training_authorized()
         ready, r = require_capacity(True)
         if ready:
             event("GPU7_HEADROOM", **r)
@@ -70,6 +76,7 @@ def wait_gpu():
 
 
 def command(d, name, argv, gpu=False):
+    require_training_authorized()
     if gpu:
         wait_gpu()
     else:
@@ -161,6 +168,7 @@ def collector_alive():
 
 def main():
     global COMMIT
+    require_training_authorized()
     OUT.mkdir(parents=True, exist_ok=True)
     lock = (OUT / "driver.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -170,6 +178,7 @@ def main():
     final = COL / "stages/collection_index"
     event("WAIT_COLLECTION", required=str(COL / "receipts/collection_index.json"))
     while not receipt_ok(COL / "receipts/collection_index.json"):
+        require_training_authorized()
         if (COL / "events.jsonl").exists():
             events = [json.loads(x) for x in (COL / "events.jsonl").read_text().splitlines() if x.strip()]
             if events and events[-1]["event"] in ("BLOCKED", "POOL_EXHAUSTED"):

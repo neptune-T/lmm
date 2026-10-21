@@ -188,7 +188,7 @@ for eid in queue():
     rec = {"episode_id": eid, "episode": ep_id, "replica": rep, "seed": HE.episode_seed(ep_id, rep),
            "worker": WK, "arm_mode": ARM_MODE, "code_commit": CODE_COMMIT}
     buf = {"imgs": {k: [] for k in CAMS}, "proprio": [], "action": [], "joint18": [], "stage": [], "sim_time": [],
-           "state": [], "base": []}
+            "state": [], "base": [], "held_after": [], "held_width_after": []}
     try:
         HE.reset_to(env, ep_id, rep)
         ep = env.current_episode
@@ -218,7 +218,20 @@ for eid in queue():
                 buf["joint18"].append(np.asarray(a, np.float64).copy())
             obs = orig(env_, a)
             if len(buf["joint18"]) == len(buf["state"]) + 1:
-                buf["state"].append(SN.state_vector(env_))
+                state = SN.state_vector(env_)
+                buf["state"].append(state)
+                held = [-1 if h is None else int(h) for h in state["held"]]
+                widths = []
+                for side, obj in zip(("left", "right"), held):
+                    if obj < 0:
+                        widths.append(0.0)
+                    else:
+                        ev = next(e for e in reversed(HE.action_obj(env_).events)
+                                  if e["hand"] == side)
+                        assert ev["type"] == "grasp" and ev["object_index"] == obj
+                        widths.append(float(ev["width_m"]))
+                buf["held_after"].append(held)
+                buf["held_width_after"].append(widths)
             return obs
         HE.step18 = rec_step
         ex = OVMMExpert(env, on_step=on_step, force_arm=None if ARM_MODE == "auto" else ARM_MODE)
@@ -268,11 +281,14 @@ for eid in queue():
                                 joint18=np.asarray(buf["joint18"]), sim_time=np.asarray(buf["sim_time"]))
             # metadata only, kept out of the policy-visible arrays (images.npz, lowdim.npz)
             nbytes += save_npz(f"{d_ep}/metadata.npz", stage=np.asarray(buf["stage"]),
+                                held_after=np.asarray(buf["held_after"], np.int64),
+                                held_width_after=np.asarray(buf["held_width_after"], np.float64),
                                 base_xz_yaw=np.asarray(buf["base"]),      # pose2d convention (yaw about +y, 0 = +x)
                                 stage_id=np.asarray([zlib.crc32(str(s).encode()) for s in buf["stage"]], np.uint32))
             with open(f"{d_ep}/meta.json", "w") as f:
                 json.dump({**rec, "stages": buf["stage"], "policy_inputs": list(CAMS) + ["proprio16", "instruction"],
-                           "metadata_only": ["stage", "events", "arm", "plans", "ovmm", "grasp_events"]},
+                           "metadata_only": ["stage", "events", "arm", "plans", "ovmm", "grasp_events",
+                                             "held_after", "held_width_after"]},
                           f, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
             rec["bytes"] = nbytes                                  # in-memory sizes (bosfs reports stale sizes)
             n_ok += int(rec["accepted"])

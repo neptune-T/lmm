@@ -13,6 +13,7 @@ Never compares joint-space state dims with Cartesian action dims. Per episode:
 import numpy as np
 
 from . import cartesian as CE
+from .gripper_geometry import audit_gripper
 
 def lowering_chain(low, md, dt=0.1):
     """CartesianMobileAction18 -> CartesianExecutor -> executed JointMobileAction18 -> next Habitat state."""
@@ -57,6 +58,14 @@ def lowering_chain(low, md, dt=0.1):
                    "close_steps": int(cl.sum()), "close_next_min_closed_fraction": float(nxt[cl].min()) if cl.any() else None}
         g[side]["pass"] = ((not op.any() or g[side]["open_next_max_closed_fraction"] <= 0.05)
                            and (not cl.any() or g[side]["close_next_min_closed_fraction"] >= 0.15))
+        evidence_keys = ("held_after", "held_width_after")
+        if any(k in md for k in evidence_keys):
+            if not all(k in md and np.asarray(md[k]).shape == (T, 2) for k in evidence_keys):
+                raise ValueError("Incomplete post-action gripper evidence")
+            si = 0 if side == "left" else 1
+            audit = audit_gripper(cmd, nxt, md["held_after"][:-1, si], md["held_width_after"][:-1, si])
+            g[side]["physical_audit"] = audit
+            g[side]["pass"] = audit["pass"] and g[side]["cart_equals_executed"]
     gripper = {**g, "pass": all(v["pass"] for v in g.values()) and any(v["close_steps"] for v in g.values())}
     # base: commanded (v, omega) vs actual forward displacement / yaw change over the 0.1 s step
     b = np.asarray(md["base_xz_yaw"], float)

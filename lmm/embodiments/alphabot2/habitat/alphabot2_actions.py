@@ -44,14 +44,8 @@ from .alphabot2_robot import GRIPPER_OPEN_RAD, SIDES
 
 #: EG2-4C2 pad-SURFACE gap vs gripper joint, measured from the xacro collision meshes
 #: (gripper_gap.py): 1.4 cm fully closed ... 8.0 cm fully open, linear in between.
-_GAP_Q = np.array([0.0, 0.12, 0.24, 0.36, 0.48, 0.60, 0.72, 0.82])
-_GAP_M = np.array([0.0142, 0.0231, 0.0324, 0.0422, 0.0521, 0.0622, 0.0722, 0.0804])
-MIN_GRASP_WIDTH_M, MAX_GRASP_WIDTH_M = 0.015, 0.078
-
-
-def q_for_aperture(width_m: float) -> float:
-    """Gripper joint at which the pads close on an object of ``width_m`` across the fingers."""
-    return float(np.interp(width_m, _GAP_M, _GAP_Q))
+from ..gripper_geometry import (GAP_Q as _GAP_Q, GAP_M as _GAP_M,
+                               MIN_GRASP_WIDTH_M, MAX_GRASP_WIDTH_M, q_for_aperture)
 
 
 @registry.register_task_action
