@@ -2,7 +2,7 @@
 
 Adopts the existing asset downloader by waiting for its verified receipts. Reuses the
 original geometry, NAV, embodiment, manipulation, snapshot, timing and replay gates.
-Every closed stage/shard is backed up before proceeding. No GPU discovery/adoption,
+Closed shards follow the user's persisted backup policy. No GPU discovery/adoption,
 process killing, automatic repair, retry loop, or historical v2 manifest substitution.
 """
 import fcntl
@@ -128,7 +128,44 @@ def gate(stage, name, *args):
     run(stage, f"gate_{name}", [PY, S / "gates.py", name, *args])
 
 
-def backup(stage):
+def deferred_backup(stage):
+    policy = OUT / "backup_policy.json"
+    if not policy.exists():
+        return False
+    p = json.loads(policy.read_text())
+    if p.get("mode") not in {"each_stage", "after_collection"}:
+        raise RuntimeError("Unknown collection backup policy")
+    return (p["mode"] == "after_collection"
+            and stage.name.startswith(("collect_", "screen_"))
+            and json.loads((stage / "result.json").read_text()).get("pass") is True)
+
+
+def flush_deferred_backups():
+    for p in sorted((OUT / "pending_backups").glob("*.json")):
+        item = json.loads(p.read_text())
+        d = OUT / "stages" / p.stem
+        if (str(d) != item["stage"] or not json.loads((d / "result.json").read_text()).get("pass")
+                or hashlib.sha256((d / "result.json").read_bytes()).hexdigest() != item["result_sha256"]):
+            raise RuntimeError(f"Deferred stage changed: {d}")
+        receipt = OUT / "receipts" / f"{d.name}.json"
+        if not receipt_ok(receipt):
+            backup(d, force=True)
+        dump(p, {**item, "status": "remote_verified", "receipt": str(receipt)})
+    event("DEFERRED_BACKUPS_VERIFIED")
+
+
+def backup(stage, force=False):
+    if stage.name == "collection_index":
+        # Also preserve usable data if the fixed candidate pool is exhausted.
+        # The index explicitly records whether the requested target was reached.
+        flush_deferred_backups()
+    if not force and deferred_backup(stage):
+        dump(OUT / "pending_backups" / f"{stage.name}.json", {
+            "stage": str(stage), "status": "local_qc_passed_pending_upload",
+            "result_sha256": hashlib.sha256((stage / "result.json").read_bytes()).hexdigest(),
+            "code_commit": COMMIT, "recorded": time.time()})
+        event("STAGE_BACKUP_DEFERRED", stage=stage.name, remote_verified=False)
+        return False
     receipt = OUT / "receipts" / f"{stage.name}.json"
     with (OUT / "backup.log").open("a") as log:
         subprocess.run([str(BACKUP), str(CODE / "scripts/hf_sync.py"),
@@ -136,6 +173,7 @@ def backup(stage):
                         "--receipt", str(receipt)], env=environment(),
                        stdout=log, stderr=subprocess.STDOUT, check=True)
     assert receipt_ok(receipt)
+    return True
 
 
 def stage(name, fn):
@@ -157,8 +195,8 @@ def stage(name, fn):
         backup(d)
         raise
     dump(result, {"pass": True, "code_commit": COMMIT, "finished": time.time()})
-    backup(d)
-    event("STAGE_BACKUP_VERIFIED", stage=name)
+    if backup(d) is not False:
+        event("STAGE_BACKUP_VERIFIED", stage=name)
     return d
 
 

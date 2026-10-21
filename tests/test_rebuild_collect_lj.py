@@ -75,6 +75,44 @@ class RecoveryBoundaries(unittest.TestCase):
         self.assertEqual(a, M.scene_order(list(reversed(rs))))
         self.assertEqual(len({r["scene"] for r in a[:3]}), 3)
 
+    def test_deferred_stage_is_not_a_remote_receipt_and_resume_skips_work(self):
+        M.dump(self.out / "backup_policy.json", {"mode": "after_collection"})
+        with patch.object(M.subprocess, "run") as upload:
+            M.stage("collect_0001", lambda d: (d / "data.txt").write_text("data"))
+            M.stage("collect_0001", lambda _: self.fail("must not recollect"))
+            upload.assert_not_called()
+        self.assertFalse((self.out / "receipts/collect_0001.json").exists())
+        p = self.out / "pending_backups/collect_0001.json"
+        self.assertEqual(json.loads(p.read_text())["status"], "local_qc_passed_pending_upload")
+        with patch.object(M, "backup", side_effect=lambda d, force: self.verified(d)) as upload:
+            M.flush_deferred_backups()
+            upload.assert_called_once_with(self.out / "stages/collect_0001", force=True)
+        self.assertEqual(json.loads(p.read_text())["status"], "remote_verified")
+
+    def test_failed_stage_never_defers_and_changed_stage_blocks_flush(self):
+        M.dump(self.out / "backup_policy.json", {"mode": "after_collection"})
+        d = self.out / "stages/collect_0001"
+        M.dump(d / "result.json", {"pass": False})
+        self.assertFalse(M.deferred_backup(d))
+        M.dump(d / "result.json", {"pass": True})
+        M.backup(d)
+        M.dump(d / "result.json", {"pass": True, "changed": True})
+        with patch.object(M, "backup") as upload:
+            with self.assertRaisesRegex(RuntimeError, "Deferred stage changed"):
+                M.flush_deferred_backups()
+            upload.assert_not_called()
+
+    def test_failed_final_upload_stays_pending(self):
+        M.dump(self.out / "backup_policy.json", {"mode": "after_collection"})
+        d = self.out / "stages/collect_0001"
+        M.dump(d / "result.json", {"pass": True})
+        M.backup(d)
+        with patch.object(M, "backup", side_effect=RuntimeError("quota")):
+            with self.assertRaisesRegex(RuntimeError, "quota"):
+                M.flush_deferred_backups()
+        p = self.out / "pending_backups/collect_0001.json"
+        self.assertEqual(json.loads(p.read_text())["status"], "local_qc_passed_pending_upload")
+
 
 class CandidateCapacity(unittest.TestCase):
     def units(self, n):
