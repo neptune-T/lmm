@@ -389,7 +389,8 @@ def main():
             sim(d, "collector", "pilot.py", extra)
             reject_engineering(d / "data")
             # Actual labels, camera shapes, finite values, timestamps and historical source indices.
-            run(d, "raw_check", [P5, CODE / "scripts/rebuild_history_check.py", d / "data"],
+            run(d, "raw_check", [P5, CODE / "scripts/rebuild_history_check.py", d / "data",
+                                 *(["--quarantine-semantic"] if name.startswith("collect_") else [])],
                 {"CUDA_VISIBLE_DEVICES": "", "PYTHONPATH": str(CODE)})
         p = stage(name, work)
         collected.append(p / "data")

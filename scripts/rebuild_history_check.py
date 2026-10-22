@@ -14,6 +14,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent / "alphabot2_pi05"))
 import ovmm_model as M
 from lmm.embodiments.alphabot2.ovmm_chain_check import lowering_chain
+from lmm.embodiments.alphabot2.raw_qc import semantic_reject, quarantine
 
 H = {"camera": "camera_top", "offsets": [5, 10, 15], "state": False}
 cfg = M.build_config(os.environ["PI05_CKPT"], device="cpu", history=H)
@@ -27,6 +28,10 @@ result = {"cpu_contract_pass": True, "history": H, "raw_episodes_checked": [],
           "not_yet_verified": ["decoded videos", "actual model forward", "optimizer resume", "training VRAM"]}
 if len(sys.argv) > 1:
     root = Path(sys.argv[1])
+    reject_semantic = "--quarantine-semantic" in sys.argv[2:]
+    report = root / "raw_qc_report.json"
+    rejected = (json.loads(report.read_text()).get("raw_episodes_rejected", {})
+                if reject_semantic and report.exists() else {})
     rs = [json.loads(l) for p in root.glob("results*.jsonl") for l in p.read_text().splitlines()]
     for r in rs:
         if not r.get("accepted"):
@@ -55,7 +60,19 @@ if len(sys.argv) > 1:
                     assert np.array_equal(batch[f"observation.images.camera_top_h{off}"][0].numpy(),
                                           head[max(0, t - off)])
             chain = lowering_chain(low, meta)
+            if reject_semantic and semantic_reject(chain):
+                rejected[r["episode_id"]] = {"reason": "cartesian_target_not_executed",
+                                             "chain": chain}
+                continue
             assert all(chain[k]["pass"] for k in ("lowering", "joint_tracking",
                        "fk_next_state_matches_label", "gripper", "base")), (d, chain)
             result["raw_episodes_checked"].append({"unit": r["episode_id"], "frames": n, "chain": chain})
+    # Only publish exclusions after all other episodes and infrastructure checks pass.
+    if reject_semantic:
+        quarantine(root, rejected)
+        result["raw_episodes_rejected"] = rejected
+        report = root / "raw_qc_report.json"
+        tmp = report.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(result, indent=2) + "\n")
+        tmp.replace(report)
 print(json.dumps(result))
