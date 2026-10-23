@@ -192,7 +192,11 @@ def stage(name, fn):
         fn(d)
     except Exception:
         dump(result, {"pass": False, "traceback": traceback.format_exc()})
-        backup(d)
+        try:
+            backup(d)
+        except Exception as backup_error:
+            event("FAILURE_BACKUP_FAILED", stage=name, error=str(backup_error),
+                  original_failure=str(result))
         raise
     dump(result, {"pass": True, "code_commit": COMMIT, "finished": time.time()})
     if backup(d) is not False:
