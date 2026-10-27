@@ -59,7 +59,24 @@ def main():
     while True:
         for ck in sorted((run/'sft/v2B').glob('ckpt_step*')):
             if (ck/'COMPLETE').exists():backup(run,ck)
-        if not a.watch or (run/'sft/v2B/DONE').exists():return
+        if (run/'sft/v2B/DONE').exists():
+            out=run/'sft/v2B'
+            summary=json.loads((out/'summary.json').read_text())
+            index=run/'checks/checkpoint_index.json'
+            write(index,dict(best_step=summary['best_step'],
+                            best_checkpoint=f"ckpt_step{summary['best_step']:07d}",
+                            final_checkpoint=f"ckpt_step{summary['steps']:07d}",
+                            selection=summary['selection']))
+            receipt=run/'checks/final_training_hf_verified.json'
+            if not receipt.exists():
+                subprocess.run([sys.executable,str(Path(__file__).with_name('hf_sync.py')),
+                    '--tag','recovered_v2B_ddp2_20261027_final_results','--receipt',str(receipt),
+                    str(out/'summary.json'),str(out/'train_log.jsonl'),str(index),
+                    str(run/'sft_v2B_ddp.yaml'),str(run/'checks/execution_provenance.json'),
+                    *map(str,sorted(out.glob('run_info_step*.json')))],check=True)
+            print('HF_FINAL_TRAINING_RESULTS_VERIFIED',flush=True)
+            return
+        if not a.watch:return
         time.sleep(30)
 
 

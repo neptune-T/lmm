@@ -1,5 +1,12 @@
 # LMM / AlphaBot 2 OVMM: status, lessons and recovery plan (2026-10-19)
 
+> **2026-10-27 recovery update:** read [recovery_20261027.md](recovery_20261027.md)
+> first. The original converted v2 train/val data has been recovered from CFS,
+> fully decoded and backed up with verified HF hashes. Dual-A800 B SFT
+> reconstruction from the public base is authorized. Original v2-B weights
+> and raw simulator episodes remain unavailable. The host, GPU assignment and
+> active run paths in older updates are historical, not current launch settings.
+
 > **2026-10-20 recovery update:** the historical status below is not live server state.
 > Read [recovery_20261020.md](recovery_20261020.md) first. New host access is verified; all GPUs
 > are occupied, and the user selected GPU7 only. HF contains code/results, not v2 weights.
