@@ -9,10 +9,20 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts/alphabot2_pi05"))
-from sft_ovmm import WeightedBatches, capture_rng, restore_rng, lr_at
+from sft_ovmm import WeightedBatches, capture_rng, restore_rng, lr_at, checked_rank_state
 
 
 class ResumeTests(unittest.TestCase):
+    def test_ddp_rank_snapshot_rejects_wrong_lineage_or_missing_rng(self):
+        good = dict(rank=1, world=2, step=2, config_sha256='frozen', sampler_next_micro_step=2,
+                    rng={'torch': torch.Generator().get_state()})
+        expected = dict(rank=1, world=2, step=2, config_sha='frozen', accum=1)
+        self.assertIs(checked_rank_state(good, **expected), good)
+        for key, value in [('rank', 0), ('world', 1), ('step', 1), ('config_sha256', 'other'),
+                           ('sampler_next_micro_step', 0), ('rng', None)]:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                checked_rank_state({**good, key: value}, **expected)
+
     def test_sampler_resume_matches_next_accumulated_batches(self):
         stream = iter(WeightedBatches([1., 2., 8., 3.], 8, 1000, 0, 0))
         for _ in range(14):  # seven optimizer steps, two microbatches per step

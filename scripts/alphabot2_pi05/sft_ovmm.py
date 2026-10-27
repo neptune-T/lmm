@@ -75,6 +75,15 @@ def restore_rng(state):
     random.setstate(state["python"])
 
 
+def checked_rank_state(state, *, rank, world, step, config_sha, accum):
+    """Fail closed on incomplete/mismatched DDP optimizer and RNG snapshots."""
+    expected = {"rank": rank, "world": world, "step": step,
+                "config_sha256": config_sha, "sampler_next_micro_step": step * accum}
+    if any(state.get(k) != v for k, v in expected.items()) or not state.get("rng"):
+        raise RuntimeError("DDP checkpoint rank/config/step/RNG mismatch")
+    return state
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -137,21 +146,27 @@ def main():
     if resume:
         st = torch.load(resume / "trainer.pt", map_location="cpu", weights_only=False)
         if C.get("strict_resume"):
-            if ddp or st.get("config_sha256") != config_sha or not st.get("rng"):
-                raise RuntimeError("Strict single-GPU resume requires identical config and saved RNG state")
+            if st.get("config_sha256") != config_sha or (not ddp and not st.get("rng")):
+                raise RuntimeError("Strict resume requires identical config and saved RNG state")
+            if ddp and st.get("sharded_world") != world:
+                raise RuntimeError("Strict DDP resume requires identical world size")
             if st.get("sampler_next_micro_step") != st["step"] * accum:
                 raise RuntimeError("Checkpoint sampler position mismatch")
         if st.get("sharded_world"):                                     # per-rank ZeRO shards (multi-GPU checkpoint)
             if ddp and st["sharded_world"] == world:
                 sh = torch.load(resume / f"optim_rank{rank}.pt", map_location="cpu", weights_only=False)
+                if C.get("strict_resume"):
+                    checked_rank_state(sh, rank=rank, world=world, step=st["step"], config_sha=config_sha, accum=accum)
                 opt.optim.load_state_dict(sh["optimizer_shard"])
+                resume_rng = sh.get("rng")
             elif rank == 0:
                 print(f"WARNING optimizer state not restored: checkpoint sharded over {st['sharded_world']} ranks, "
                       f"this run has {world}; weights resumed, AdamW moments restart", flush=True)
         else:
             opt.load_state_dict(st["optimizer"])                        # consolidated (single-process) checkpoint
         start, best = st["step"], tuple(st["best"])
-        resume_rng = st.get("rng")
+        if not ddp:
+            resume_rng = st.get("rng")
         # samples actually seen before this attempt (the world size may differ between attempts);
         # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
         seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * gb)
@@ -172,7 +187,7 @@ def main():
                                          generator=torch.Generator().manual_seed(int(C["seed"])))
     vidx = np.random.default_rng(0).choice(len(va), size=min(512, len(va)), replace=False)
     vloader = torch.utils.data.DataLoader(torch.utils.data.Subset(va, vidx.tolist()), batch_size=int(C["batch_per_gpu"]),
-                                          shuffle=False, num_workers=4)
+                                          shuffle=False, num_workers=int(C.get("val_num_workers", 4)))
     amp = torch.autocast("cuda", dtype=torch.bfloat16, enabled=C["precision"].get("autocast") == "bfloat16")
     log = open(out / "train_log.jsonl", "a") if rank == 0 else None
 
@@ -214,7 +229,12 @@ def main():
         d = out / f"ckpt_step{step:07d}"
         if ddp:
             d.mkdir(parents=True, exist_ok=True)
-            torch.save({"optimizer_shard": opt.optim.state_dict(), "rank": rank, "world": world}, d / f"optim_rank{rank}.pt")
+            rank_path = d / f"optim_rank{rank}.pt"
+            rank_tmp = d / f".optim_rank{rank}.tmp"
+            torch.save({"optimizer_shard": opt.optim.state_dict(), "rank": rank, "world": world,
+                        "step": step, "config_sha256": config_sha,
+                        "sampler_next_micro_step": step * accum, "rng": capture_rng()}, rank_tmp)
+            rank_tmp.replace(rank_path)
             dist.barrier()
         if rank == 0:
             save_policy(d / "policy")

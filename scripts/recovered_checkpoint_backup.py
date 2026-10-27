@@ -1,0 +1,66 @@
+"""Mirror immutable COMPLETE checkpoints to mounted storage, then verified HF.
+Never removes originals; best/last are represented by the saved checkpoint step.
+"""
+import argparse
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+from recover_v2_dataset import digest, write
+
+
+def backup(run, ckpt):
+    assert (ckpt/'COMPLETE').is_file()
+    receipts=run/'checks/checkpoint_backups'
+    receipts.mkdir(parents=True,exist_ok=True)
+    hf=receipts/(ckpt.name+'_hf.json')
+    if hf.exists():
+        rec=json.loads(hf.read_text())
+        assert not rec['mismatch'] and rec['verified']==rec['files']
+        return
+    dst=Path('/workspace/lmm/rebuild_20261027/checkpoints')/ckpt.name
+    manifest={}
+    # Atomic files only: bosfs does not support safe directory renames.
+    for src in sorted(ckpt.rglob('*')):
+        if not src.is_file() or src.name=='COMPLETE':continue
+        assert not src.is_symlink()
+        rel=src.relative_to(ckpt)
+        sha=digest(src)
+        target=dst/rel
+        target.parent.mkdir(parents=True,exist_ok=True)
+        if not target.exists() or digest(target)!=sha:
+            temp=target.with_suffix(target.suffix+'.part')
+            shutil.copyfile(src,temp)
+            assert digest(temp)==sha,target
+            temp.replace(target)
+        manifest[str(rel)]={'bytes':src.stat().st_size,'sha256':sha}
+    write(receipts/(ckpt.name+'_mounted.json'),dict(verified=True,source=str(ckpt),destination=str(dst),files=manifest))
+    (dst/'COMPLETE').write_text('Verified file-by-file; see mounted receipt.\n')
+    print('MOUNTED_BACKUP_VERIFIED',ckpt.name,flush=True)
+    cmd=[sys.executable,str(Path(__file__).with_name('hf_sync.py')),
+         '--tag','recovered_v2B_ddp2_20261027_'+ckpt.name,'--receipt',str(hf),str(ckpt)]
+    subprocess.run(cmd,check=True)
+    print('HF_CHECKPOINT_VERIFIED',ckpt.name,flush=True)
+
+
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument('--run',required=True)
+    ap.add_argument('--checkpoint')
+    ap.add_argument('--watch',action='store_true')
+    a=ap.parse_args()
+    run=Path(a.run)
+    if a.checkpoint:
+        backup(run,Path(a.checkpoint))
+        return
+    while True:
+        for ck in sorted((run/'sft/v2B').glob('ckpt_step*')):
+            if (ck/'COMPLETE').exists():backup(run,ck)
+        if not a.watch or (run/'sft/v2B/DONE').exists():return
+        time.sleep(30)
+
+
+if __name__=='__main__':main()
