@@ -21,6 +21,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--run', required=True)
     ap.add_argument('--session', default='lmm-recover')
+    ap.add_argument('--hf-after-training',action='store_true',help='User-authorized deferred HF backup; checkpoints remain on CFS')
     a = ap.parse_args()
     run = Path(a.run).resolve()
     code = Path(__file__).resolve().parent
@@ -46,7 +47,7 @@ def main():
         subprocess.run(['tmux','new-window','-t',a.session,'-n',name,command],check=True)
 
     try:
-        event('WAIT_RESTORED_CHECKPOINT_AND_HF')
+        event('WAIT_RESTORED_CHECKPOINT',hf_after_training=a.hf_after_training)
         deadline=time.monotonic()+6*3600
         while not (run/'checks/checkpoint_copy_verified.json').exists():
             lines=(run/'restore_events.jsonl').read_text().splitlines()
@@ -75,15 +76,20 @@ def main():
                      'PYTORCH_CUDA_ALLOC_CONF':'expandable_segments:True'}
         env.update(runtime_env)
         # Exercise the actual periodic worker, not only a direct preflight invocation.
-        window('checkpoint-backup',[sys.executable,'-u',str(code/'recovered_checkpoint_backup.py'),
-                                   '--run',str(run),'--watch'], {'PYTHONDONTWRITEBYTECODE':'1'})
-        hf=run/'checks/checkpoint_backups/ckpt_step0001000_hf.json'
-        while not hf.exists():
-            panes=subprocess.check_output(['tmux','list-panes','-t',a.session+':checkpoint-backup','-F','#{pane_dead}'],text=True)
-            if '1' in panes.split(): raise RuntimeError('Checkpoint uploader exited before HF verification')
-            if time.monotonic()>deadline: raise RuntimeError('HF backup wait timeout')
-            time.sleep(20)
-        event('CHECKPOINT_1000_HF_VERIFIED',revision=receipt(hf)['revision'])
+        backup_args=[sys.executable,'-u',str(code/'recovered_checkpoint_backup.py'),'--run',str(run),'--watch']
+        if a.hf_after_training:backup_args.append('--after-training')
+        window('post-training-hf' if a.hf_after_training else 'checkpoint-backup',
+               backup_args, {'PYTHONDONTWRITEBYTECODE':'1'})
+        if a.hf_after_training:
+            event('HF_DEFERRED_UNTIL_TRAINING_COMPLETE',checkpoint_storage=str(run/'sft/v2B'),workspace_writes=False)
+        else:
+            hf=run/'checks/checkpoint_backups/ckpt_step0001000_hf.json'
+            while not hf.exists():
+                panes=subprocess.check_output(['tmux','list-panes','-t',a.session+':checkpoint-backup','-F','#{pane_dead}'],text=True)
+                if '1' in panes.split(): raise RuntimeError('Checkpoint uploader exited before HF verification')
+                if time.monotonic()>deadline: raise RuntimeError('HF backup wait timeout')
+                time.sleep(20)
+            event('CHECKPOINT_1000_HF_VERIFIED',revision=receipt(hf)['revision'])
         assert shutil.disk_usage('/').free > 12*(1<<30),'root disk headroom'
         assert shutil.disk_usage(run).free > 600*(1<<30),'CFS headroom for remaining checkpoints and snapshots'
         for gpu in [0,1]:
@@ -93,6 +99,7 @@ def main():
                  'init_checkpoint':{'from':'/share/personal/liyanjun/yanjun/zts/lmm/rebuild_20261027/assets/ckpt','to':str(run/'assets/ckpt')}}
         (run/'storage_map.json').write_text(json.dumps(mapping,indent=2))
         provenance={'owner':'zhangtianshan','parent_run':'rebuild_20261027','checkpoint_step':1000,
+                    'hf_after_training':a.hf_after_training,'workspace_writes':False,
                     'storage_relocation':mapping,'training_config_unchanged':True,
                     'discarded_incomplete_step':2000,'cause':'HF tmux worker staged on root; ENOSPC, then validation failure/NCCL timeout'}
         (run/'checks/execution_provenance.json').write_text(json.dumps(provenance,indent=2))

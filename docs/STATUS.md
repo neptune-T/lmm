@@ -5,6 +5,8 @@
 > training. New endpoint is port5140; all new runtime writes belong under
 > `/share/personal/zhangtianshan/lmm`, persistent snapshots under `/workspace/zts/lmm`.
 > Recover only the verified COMPLETE step1000 checkpoint; step2000 is incomplete.
+> **Latest user correction:** no further `/workspace` writes. Use the CFS path
+> above for code/data/checkpoints; HF upload runs after training, not as a launch gate.
 
 > **2026-10-27 recovery update:** read [recovery_20261027.md](recovery_20261027.md)
 > first. The original converted v2 train/val data has been recovered from CFS,
