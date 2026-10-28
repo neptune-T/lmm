@@ -1,5 +1,11 @@
 # LMM / AlphaBot 2 OVMM: status, lessons and recovery plan (2026-10-19)
 
+> **2026-10-28 current recovery:** read [recovery_20261028.md](recovery_20261028.md)
+> first. The previous instance stopped after an HF staging ENOSPC failure killed
+> training. New endpoint is port5140; all new runtime writes belong under
+> `/share/personal/zhangtianshan/lmm`, persistent snapshots under `/workspace/zts/lmm`.
+> Recover only the verified COMPLETE step1000 checkpoint; step2000 is incomplete.
+
 > **2026-10-27 recovery update:** read [recovery_20261027.md](recovery_20261027.md)
 > first. The original converted v2 train/val data has been recovered from CFS,
 > fully decoded and backed up with verified HF hashes. Dual-A800 B SFT

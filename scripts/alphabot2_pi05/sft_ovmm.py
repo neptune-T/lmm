@@ -29,6 +29,7 @@ import torch.distributed as dist
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ovmm_model  # noqa: E402
 import sampling  # noqa: E402
+from storage_relocation import relocate  # noqa: E402
 from lerobot.datasets.factory import resolve_delta_timestamps  # noqa: E402
 from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata  # noqa: E402
 
@@ -87,12 +88,17 @@ def checked_rank_state(state, *, rank, world, step, config_sha, accum):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
+    ap.add_argument("--storage-map", help="JSON of checked storage-only relocations; training config remains frozen")
+    ap.add_argument("--validate-resume", action="store_true", help="Exercise validation workers before continuing a recovered run")
     ap.add_argument("--max-steps", type=int, default=0, help="override steps (smoke runs)")
     ap.add_argument("--stop-after-step", type=int, default=0,
                     help="checkpoint and exit at this step without changing the configured LR horizon or writing DONE")
     args = ap.parse_args()
     C = sampling.load_config(args.config)
     config_sha = hashlib.sha256(json.dumps(C, sort_keys=True).encode()).hexdigest()
+    frozen_config = C
+    storage_map = json.loads(Path(args.storage_map).read_text()) if args.storage_map else {}
+    C = relocate(C, storage_map)
     ddp = "RANK" in os.environ
     if ddp:
         dist.init_process_group("nccl")
@@ -159,6 +165,7 @@ def main():
                     checked_rank_state(sh, rank=rank, world=world, step=st["step"], config_sha=config_sha, accum=accum)
                 opt.optim.load_state_dict(sh["optimizer_shard"])
                 resume_rng = sh.get("rng")
+                del sh  # optimizer tensors have been moved to their owning device
             elif rank == 0:
                 print(f"WARNING optimizer state not restored: checkpoint sharded over {st['sharded_world']} ranks, "
                       f"this run has {world}; weights resumed, AdamW moments restart", flush=True)
@@ -171,7 +178,8 @@ def main():
         # checkpoints written before this field existed fall back to SAMPLES_SEEN_AT_RESUME, else step*batch*world
         seen0 = int(st.get("samples_seen") or os.environ.get("SAMPLES_SEEN_AT_RESUME") or start * gb)
     if rank == 0:
-        info0 = {"config": C, "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
+        info0 = {"config": C, "frozen_config": frozen_config, "storage_relocation": storage_map,
+                 "policy_io": ovmm_model.IO.describe(), "image_features": list(cfg.image_features),
                  "state_dim": ovmm_model.state_dim(hist), "history": hist, "loss_cfg": loss_cfg, "delta_timestamps": dts,
                  "resume_from": str(resume) if resume else None, "start_step": start, "world": world, "samples_seen_at_start": seen0,
                  "rng_restored": bool(resume_rng), "config_sha256": config_sha,
@@ -251,6 +259,17 @@ def main():
         if ddp:
             dist.barrier()
 
+    if args.validate_resume:
+        if not resume:
+            raise RuntimeError('Resume validation requires a complete checkpoint')
+        if rank == 0:
+            vl, vg = validate()
+            (out / 'resume_validation.json').write_text(json.dumps({
+                'step': start, 'val_loss': vl, 'val_group': vg, 'passed': True,
+                'scope': 'Same frozen validation protocol; no model update or checkpoint reselection'}))
+            print('RESUME_VALIDATION_PASS', start, vl, flush=True)
+        if ddp:
+            dist.barrier()
     policy.train()
     it = iter(loader)
     if resume_rng:

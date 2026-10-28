@@ -8,11 +8,14 @@ import shutil
 import subprocess
 import sys
 import time
+import os
 
 from recover_v2_dataset import digest, write
+from backup_storage import checkpoint_environment
 
 
 def backup(run, ckpt):
+    env = checkpoint_environment(run)
     assert (ckpt/'COMPLETE').is_file()
     receipts=run/'checks/checkpoint_backups'
     receipts.mkdir(parents=True,exist_ok=True)
@@ -21,7 +24,7 @@ def backup(run, ckpt):
         rec=json.loads(hf.read_text())
         assert not rec['mismatch'] and rec['verified']==rec['files']
         return
-    dst=Path('/workspace/lmm/rebuild_20261027/checkpoints')/ckpt.name
+    dst=Path(os.environ.get('LMM_CHECKPOINT_MIRROR', str(Path('/workspace/zts/lmm')/run.name/'checkpoints')))/ckpt.name
     manifest={}
     # Atomic files only: bosfs does not support safe directory renames.
     for src in sorted(ckpt.rglob('*')):
@@ -41,8 +44,8 @@ def backup(run, ckpt):
     (dst/'COMPLETE').write_text('Verified file-by-file; see mounted receipt.\n')
     print('MOUNTED_BACKUP_VERIFIED',ckpt.name,flush=True)
     cmd=[sys.executable,str(Path(__file__).with_name('hf_sync.py')),
-         '--tag','recovered_v2B_ddp2_20261027_'+ckpt.name,'--receipt',str(hf),str(ckpt)]
-    subprocess.run(cmd,check=True)
+         '--tag',run.name+'_'+ckpt.name,'--receipt',str(hf),str(ckpt)]
+    subprocess.run(cmd,check=True,env=env)
     print('HF_CHECKPOINT_VERIFIED',ckpt.name,flush=True)
 
 
@@ -70,10 +73,10 @@ def main():
             receipt=run/'checks/final_training_hf_verified.json'
             if not receipt.exists():
                 subprocess.run([sys.executable,str(Path(__file__).with_name('hf_sync.py')),
-                    '--tag','recovered_v2B_ddp2_20261027_final_results','--receipt',str(receipt),
+                    '--tag',run.name+'_final_results','--receipt',str(receipt),
                     str(out/'summary.json'),str(out/'train_log.jsonl'),str(index),
                     str(run/'sft_v2B_ddp.yaml'),str(run/'checks/execution_provenance.json'),
-                    *map(str,sorted(out.glob('run_info_step*.json')))],check=True)
+                    *map(str,sorted(out.glob('run_info_step*.json')))],check=True,env=checkpoint_environment(run))
             print('HF_FINAL_TRAINING_RESULTS_VERIFIED',flush=True)
             return
         if not a.watch:return

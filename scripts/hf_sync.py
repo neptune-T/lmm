@@ -21,6 +21,7 @@ import argparse, hashlib, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 from huggingface_hub import HfApi, CommitOperationAdd
+from backup_storage import check_snapshot_capacity
 
 SECRET = re.compile(rb"hf_[A-Za-z0-9]{30,}|wandb_v1_[A-Za-z0-9_]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----")
 TEXT_MAX = 20 << 20
@@ -187,6 +188,7 @@ def main():
     if bad:
         sys.exit(f"refused: secret-like content in {bad[:5]}")
     # Copy a stable snapshot. Hardlinks let an active writer silently mutate an in-flight backup.
+    check_snapshot_capacity(tmp, sum(p.stat().st_size for p, _ in pairs))
     snapshot = tmp / "snapshot"
     snapshot.mkdir(exist_ok=True)
     frozen = []
