@@ -145,6 +145,8 @@ def main():
     ap.add_argument("--tag", required=True)
     ap.add_argument("--git", action="append", default=[])
     ap.add_argument("--receipt", help="Write a verified receipt outside the backed-up sources.")
+    ap.add_argument("--cleanup-verified-stage", action="store_true",
+                    help="After a verified receipt, remove only this upload's disposable snapshot/stage copies")
     ap.add_argument("items", nargs="*")
     a = ap.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", a.tag) or a.tag in (".", ".."):
@@ -246,6 +248,9 @@ def main():
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.with_suffix(dst.suffix + ".tmp").write_text(json.dumps(receipt, indent=2) + "\n")
         dst.with_suffix(dst.suffix + ".tmp").replace(dst)
+        if a.cleanup_verified_stage:
+            for scratch in (snapshot, stage):
+                shutil.rmtree(scratch)
     print(json.dumps(receipt))
     sys.exit(1 if bad else 0)
 

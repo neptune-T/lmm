@@ -44,7 +44,7 @@ def backup(run, ckpt):
     (dst/'COMPLETE').write_text('Verified file-by-file; see mounted receipt.\n')
     print('MOUNTED_BACKUP_VERIFIED',ckpt.name,flush=True)
     cmd=[sys.executable,str(Path(__file__).with_name('hf_sync.py')),
-         '--tag',run.name+'_'+ckpt.name,'--receipt',str(hf),str(ckpt)]
+         '--tag',run.name+'_'+ckpt.name,'--receipt',str(hf),'--cleanup-verified-stage',str(ckpt)]
     subprocess.run(cmd,check=True,env=env)
     print('HF_CHECKPOINT_VERIFIED',ckpt.name,flush=True)
 
