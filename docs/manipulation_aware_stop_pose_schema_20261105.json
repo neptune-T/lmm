@@ -1,0 +1,2073 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lmm://schemas/manipulation-aware-stop-pose-v1",
+  "title": "LMM Manipulation-Aware Stop-Pose Dataset",
+  "description": "JSONL record schema. All examples below are synthetic and must never be counted as observations.",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/episode_metadata"
+    },
+    {
+      "$ref": "#/$defs/candidate_stop_pose"
+    },
+    {
+      "$ref": "#/$defs/observation"
+    },
+    {
+      "$ref": "#/$defs/trial"
+    },
+    {
+      "$ref": "#/$defs/outcome"
+    },
+    {
+      "$ref": "#/$defs/qc"
+    }
+  ],
+  "$defs": {
+    "episode_metadata": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "episode_metadata"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "replica": {
+          "type": "integer"
+        },
+        "split": {
+          "enum": [
+            "train",
+            "validation",
+            "heldout_evaluation"
+          ]
+        },
+        "configuration_seed": {
+          "type": "integer"
+        },
+        "initial_base_pose_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "initial_arm_q": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "right": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "initial_gripper_closed_fraction": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "number"
+            },
+            "right": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "target_initial_pose_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "contract": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "type": "string"
+            },
+            "proprio_dim": {
+              "const": 16
+            },
+            "action_dim": {
+              "const": 18
+            },
+            "action_labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "precision": {
+              "enum": [
+                "fp32",
+                "bf16",
+                "unknown"
+              ]
+            },
+            "batch_size": {
+              "type": "integer"
+            },
+            "chunk_size": {
+              "type": "integer"
+            },
+            "num_inference_steps": {
+              "type": "integer"
+            },
+            "exec_steps": {
+              "type": "integer"
+            },
+            "history_offsets": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "camera_map": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "masked_cameras": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "coord_frames": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "normalizer_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "server_manifest_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "contract_version",
+            "proprio_dim",
+            "action_dim",
+            "precision",
+            "batch_size",
+            "chunk_size",
+            "num_inference_steps",
+            "exec_steps",
+            "history_offsets",
+            "camera_map",
+            "masked_cameras",
+            "coord_frames"
+          ]
+        },
+        "roster_source": {
+          "type": "string"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "replica",
+        "split",
+        "configuration_seed",
+        "initial_base_pose_world",
+        "initial_arm_q",
+        "initial_gripper_closed_fraction",
+        "target_initial_pose_world",
+        "contract",
+        "roster_source",
+        "synthetic"
+      ]
+    },
+    "candidate_stop_pose": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "candidate_stop_pose"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "candidate_set_id": {
+          "type": "string"
+        },
+        "sampling_reason": {
+          "enum": [
+            "original_planner",
+            "feasible_inner",
+            "feasible_boundary",
+            "heading_minus",
+            "heading_plus",
+            "hard_geometry",
+            "invalid_or_unreachable"
+          ]
+        },
+        "sampling_seed": {
+          "type": "integer"
+        },
+        "planned_base_pose_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "planned_base_heading_rad": {
+          "type": "number"
+        },
+        "target_relative_pose_base": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "target_relative_distance_m": {
+          "type": "number"
+        },
+        "target_relative_heading_rad": {
+          "type": "number"
+        },
+        "navmesh_navigable": {
+          "type": "boolean"
+        },
+        "nav_path_found": {
+          "type": "boolean"
+        },
+        "nav_geodesic_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "geometry_only": {
+          "type": "boolean"
+        },
+        "selected_arm": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ]
+        },
+        "ik": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "right": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "collision_precheck": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "reachability_margin_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_notes": {
+          "type": "string"
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "target_grasp_pose_arm": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "right": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "gripper_approach_direction_arm": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "grasp_width_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planner_reported_success": {
+          "type": "boolean"
+        },
+        "actual_final_base_pose_world": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planned_actual_delta_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planned_actual_delta_rad": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nav_path_length_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "candidate_id",
+        "candidate_set_id",
+        "sampling_reason",
+        "sampling_seed",
+        "planned_base_pose_world",
+        "planned_base_heading_rad",
+        "target_relative_pose_base",
+        "target_relative_distance_m",
+        "target_relative_heading_rad",
+        "navmesh_navigable",
+        "nav_path_found",
+        "nav_geodesic_m",
+        "geometry_only",
+        "selected_arm",
+        "ik",
+        "collision_precheck",
+        "reachability_margin_m",
+        "candidate_notes",
+        "synthetic",
+        "target_grasp_pose_arm",
+        "gripper_approach_direction_arm",
+        "grasp_width_m",
+        "planner_reported_success",
+        "actual_final_base_pose_world",
+        "planned_actual_delta_m",
+        "planned_actual_delta_rad",
+        "nav_path_length_m"
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "observation"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "observation_id": {
+          "type": "string"
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "sim_step": {
+          "type": "integer"
+        },
+        "sim_time_s": {
+          "type": "number"
+        },
+        "base_pose_planned_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "base_pose_actual_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "base_pose_error_m": {
+          "type": "number"
+        },
+        "base_heading_error_rad": {
+          "type": "number"
+        },
+        "camera_top_rgb": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "dtype",
+            "shape"
+          ]
+        },
+        "camera_left_rgb": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "dtype",
+            "shape"
+          ]
+        },
+        "camera_right_rgb": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "dtype": {
+              "type": "string"
+            },
+            "shape": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "dtype",
+            "shape"
+          ]
+        },
+        "camera_history": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "camera_timestamps_s": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "camera_validity": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "camera_calibration_manifest": {
+          "type": "string"
+        },
+        "canonical_proprio16": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "checkpoint_state16": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "arm_q": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "right": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "gripper_closed_fraction": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "type": "number"
+            },
+            "right": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "left",
+            "right"
+          ]
+        },
+        "selected_arm": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ]
+        },
+        "policy_input_excludes_privileged": {
+          "const": true
+        },
+        "diagnostic_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "candidate_id",
+        "observation_id",
+        "trial_id",
+        "sim_step",
+        "sim_time_s",
+        "base_pose_planned_world",
+        "base_pose_actual_world",
+        "base_pose_error_m",
+        "base_heading_error_rad",
+        "camera_top_rgb",
+        "camera_left_rgb",
+        "camera_right_rgb",
+        "camera_history",
+        "camera_timestamps_s",
+        "camera_validity",
+        "camera_calibration_manifest",
+        "canonical_proprio16",
+        "checkpoint_state16",
+        "arm_q",
+        "gripper_closed_fraction",
+        "selected_arm",
+        "policy_input_excludes_privileged",
+        "diagnostic_ref",
+        "synthetic"
+      ]
+    },
+    "trial": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "trial"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "observation_id": {
+          "type": "string"
+        },
+        "repeat_index": {
+          "type": "integer"
+        },
+        "trial_seed": {
+          "type": "integer"
+        },
+        "trial_status": {
+          "enum": [
+            "completed",
+            "timeout",
+            "geometry_only",
+            "engineering_failure",
+            "aborted",
+            "assisted"
+          ]
+        },
+        "base_lock": {
+          "const": true
+        },
+        "policy_inference_settings": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "actual_final_base_pose_world": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "actual_final_heading_rad": {
+          "type": "number"
+        },
+        "arrival_gate": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "raw_cartesian_actions_ref": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "dtype": {
+                  "type": "string"
+                },
+                "shape": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "required": [
+                "path",
+                "sha256",
+                "dtype",
+                "shape"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lowered_joint18_ref": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "dtype": {
+                  "type": "string"
+                },
+                "shape": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "required": [
+                "path",
+                "sha256",
+                "dtype",
+                "shape"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "per_step_ik_ref": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "dtype": {
+                  "type": "string"
+                },
+                "shape": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "required": [
+                "path",
+                "sha256",
+                "dtype",
+                "shape"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recorder_directory": {
+          "type": "string"
+        },
+        "recorder_seal_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replay_receipt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "navigation_path_length_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nav_collision_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planned_actual_delta_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planned_actual_delta_rad": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality_flags": {
+          "type": "object",
+          "properties": {
+            "ik_invalidity": {
+              "type": "boolean"
+            },
+            "collision": {
+              "type": "boolean"
+            },
+            "unsafe_motion": {
+              "type": "boolean"
+            },
+            "timeout": {
+              "type": "boolean"
+            },
+            "assisted_interaction": {
+              "type": "boolean"
+            },
+            "snap_desnap_used": {
+              "type": "boolean"
+            },
+            "incomplete_episode": {
+              "type": "boolean"
+            },
+            "recorder_failure": {
+              "type": "boolean"
+            },
+            "missing_observation": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ik_invalidity",
+            "collision",
+            "unsafe_motion",
+            "timeout",
+            "assisted_interaction",
+            "snap_desnap_used",
+            "incomplete_episode",
+            "recorder_failure",
+            "missing_observation"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "candidate_id",
+        "trial_id",
+        "observation_id",
+        "repeat_index",
+        "trial_seed",
+        "trial_status",
+        "base_lock",
+        "policy_inference_settings",
+        "actual_final_base_pose_world",
+        "actual_final_heading_rad",
+        "arrival_gate",
+        "raw_cartesian_actions_ref",
+        "lowered_joint18_ref",
+        "per_step_ik_ref",
+        "recorder_directory",
+        "recorder_seal_sha256",
+        "replay_receipt",
+        "synthetic",
+        "navigation_path_length_m",
+        "nav_collision_steps",
+        "planned_actual_delta_m",
+        "planned_actual_delta_rad",
+        "quality_flags"
+      ]
+    },
+    "outcome": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "outcome"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "trial_status": {
+          "type": "string"
+        },
+        "outcome_timestamp_utc": {
+          "type": "string"
+        },
+        "reached_pregrasp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contacted_object": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gripper_closed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stable_grasp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "object_lift": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lift_height_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stable_carry": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "object_detached": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pick_success": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "place_success": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "full_task_success": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ovmm_funnel": {
+          "type": "object",
+          "properties": {
+            "find": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "grasp": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "carry": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "place": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "full": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "find",
+            "grasp",
+            "carry",
+            "place",
+            "full"
+          ]
+        },
+        "event_steps": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "failure_category": {
+          "anyOf": [
+            {
+              "enum": [
+                "invalid_ik",
+                "collision",
+                "unreachable",
+                "no_contact",
+                "unstable_grasp",
+                "drop_after_lift",
+                "timeout",
+                "policy_server",
+                "missing_observation",
+                "recorder_failure",
+                "assisted_interaction",
+                "navigation_engineering",
+                "unknown"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_detail": {
+          "type": "string"
+        },
+        "assisted_interaction": {
+          "type": "boolean"
+        },
+        "snap_desnap_used": {
+          "type": "boolean"
+        },
+        "diagnostic_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "y_geometry": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "y_grasp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "y_downstream": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_timestamp_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality_flags": {
+          "type": "object",
+          "properties": {
+            "ik_invalidity": {
+              "type": "boolean"
+            },
+            "collision": {
+              "type": "boolean"
+            },
+            "unsafe_motion": {
+              "type": "boolean"
+            },
+            "timeout": {
+              "type": "boolean"
+            },
+            "assisted_interaction": {
+              "type": "boolean"
+            },
+            "snap_desnap_used": {
+              "type": "boolean"
+            },
+            "incomplete_episode": {
+              "type": "boolean"
+            },
+            "recorder_failure": {
+              "type": "boolean"
+            },
+            "missing_observation": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ik_invalidity",
+            "collision",
+            "unsafe_motion",
+            "timeout",
+            "assisted_interaction",
+            "snap_desnap_used",
+            "incomplete_episode",
+            "recorder_failure",
+            "missing_observation"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "candidate_id",
+        "trial_id",
+        "trial_status",
+        "outcome_timestamp_utc",
+        "reached_pregrasp",
+        "contacted_object",
+        "gripper_closed",
+        "stable_grasp",
+        "object_lift",
+        "lift_height_m",
+        "stable_carry",
+        "object_detached",
+        "pick_success",
+        "place_success",
+        "full_task_success",
+        "ovmm_funnel",
+        "event_steps",
+        "failure_category",
+        "failure_detail",
+        "assisted_interaction",
+        "snap_desnap_used",
+        "diagnostic_ref",
+        "synthetic",
+        "y_geometry",
+        "y_grasp",
+        "y_downstream",
+        "failure_timestamp_s",
+        "quality_flags"
+      ]
+    },
+    "qc": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "record_type": {
+          "const": "qc"
+        },
+        "dataset_version": {
+          "type": "string"
+        },
+        "episode_id": {
+          "type": "string"
+        },
+        "configuration_group_id": {
+          "type": "string"
+        },
+        "scene_id": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_category": {
+          "type": "string"
+        },
+        "task_instruction": {
+          "type": "string"
+        },
+        "random_seed": {
+          "type": "integer"
+        },
+        "policy_checkpoint_id": {
+          "type": "string"
+        },
+        "policy_checkpoint_sha256": {
+          "type": "string"
+        },
+        "environment_hash": {
+          "type": "string"
+        },
+        "collection_timestamp_utc": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "habitat_sim",
+            "real_robot"
+          ]
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "quarantine": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "object",
+          "properties": {
+            "files_present": {
+              "type": "boolean"
+            },
+            "images_decode": {
+              "type": "boolean"
+            },
+            "timestamps_monotonic": {
+              "type": "boolean"
+            },
+            "frame_consistent": {
+              "type": "boolean"
+            },
+            "duplicate_free": {
+              "type": "boolean"
+            },
+            "object_id_consistent": {
+              "type": "boolean"
+            },
+            "robot_state_present": {
+              "type": "boolean"
+            },
+            "labels_consistent": {
+              "type": "boolean"
+            },
+            "ik_consistent": {
+              "type": "boolean"
+            },
+            "trajectory_complete": {
+              "type": "boolean"
+            },
+            "replay_pass": {
+              "type": "boolean"
+            },
+            "recorder_sealed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "files_present",
+            "images_decode",
+            "timestamps_monotonic",
+            "frame_consistent",
+            "duplicate_free",
+            "object_id_consistent",
+            "robot_state_present",
+            "labels_consistent",
+            "ik_consistent",
+            "trajectory_complete",
+            "replay_pass",
+            "recorder_sealed"
+          ]
+        },
+        "engineering_failure": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "record_type",
+        "dataset_version",
+        "episode_id",
+        "configuration_group_id",
+        "scene_id",
+        "object_id",
+        "object_category",
+        "task_instruction",
+        "random_seed",
+        "policy_checkpoint_id",
+        "policy_checkpoint_sha256",
+        "environment_hash",
+        "collection_timestamp_utc",
+        "source",
+        "candidate_id",
+        "trial_id",
+        "accepted",
+        "quarantine",
+        "checks",
+        "engineering_failure",
+        "reasons",
+        "synthetic"
+      ]
+    },
+    "array_ref": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "dtype": {
+          "type": "string"
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "dtype",
+        "shape"
+      ]
+    },
+    "contract": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string"
+        },
+        "proprio_dim": {
+          "const": 16
+        },
+        "action_dim": {
+          "const": 18
+        },
+        "action_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "precision": {
+          "enum": [
+            "fp32",
+            "bf16",
+            "unknown"
+          ]
+        },
+        "batch_size": {
+          "type": "integer"
+        },
+        "chunk_size": {
+          "type": "integer"
+        },
+        "num_inference_steps": {
+          "type": "integer"
+        },
+        "exec_steps": {
+          "type": "integer"
+        },
+        "history_offsets": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "camera_map": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "masked_cameras": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coord_frames": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "normalizer_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "server_manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "proprio_dim",
+        "action_dim",
+        "precision",
+        "batch_size",
+        "chunk_size",
+        "num_inference_steps",
+        "exec_steps",
+        "history_offsets",
+        "camera_map",
+        "masked_cameras",
+        "coord_frames"
+      ]
+    }
+  },
+  "examples": [
+    {
+      "synthetic": true,
+      "schema_version": "lmm_stop_pose_v1",
+      "record_type": "candidate_stop_pose",
+      "dataset_version": "synthetic_only",
+      "episode_id": "SYNTH_EP_0001",
+      "configuration_group_id": "SYNTH_CFG_0001",
+      "scene_id": "SYNTH_SCENE",
+      "object_id": "SYNTH_OBJ",
+      "object_category": "cube",
+      "task_instruction": "Move the cube from table to box.",
+      "random_seed": 7,
+      "policy_checkpoint_id": "synthetic_frozen_sft",
+      "policy_checkpoint_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "environment_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "collection_timestamp_utc": "2026-01-01T00:00:00Z",
+      "source": "habitat_sim",
+      "candidate_id": "SYNTH_CAND_03",
+      "candidate_set_id": "SYNTH_SET_01",
+      "sampling_reason": "feasible_boundary",
+      "sampling_seed": 11,
+      "planned_base_pose_world": [
+        0.42,
+        0.0,
+        1.1,
+        0.0
+      ],
+      "planned_base_heading_rad": 0.0,
+      "target_relative_pose_base": [
+        0.5,
+        0.3,
+        0.3,
+        0.0
+      ],
+      "target_relative_distance_m": 0.583,
+      "target_relative_heading_rad": 0.54,
+      "navmesh_navigable": true,
+      "nav_path_found": true,
+      "nav_geodesic_m": 1.2,
+      "geometry_only": false,
+      "selected_arm": "left",
+      "ik": {
+        "left": {
+          "valid": true,
+          "pos_err_m": 0.002,
+          "rot_err_rad": 0.01
+        },
+        "right": {
+          "valid": false,
+          "pos_err_m": 0.12,
+          "rot_err_rad": 0.3
+        }
+      },
+      "collision_precheck": {
+        "checked": true,
+        "free": true,
+        "reason": "clear"
+      },
+      "reachability_margin_m": 0.01,
+      "candidate_notes": "SYNTHETIC EXAMPLE; not a measured outcome.",
+      "target_grasp_pose_arm": {
+        "left": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "right": null
+      },
+      "gripper_approach_direction_arm": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "grasp_width_m": 0.05,
+      "planner_reported_success": true,
+      "actual_final_base_pose_world": [
+        0.42,
+        0.0,
+        1.1,
+        0.0
+      ],
+      "planned_actual_delta_m": 0.01,
+      "planned_actual_delta_rad": 0.02,
+      "nav_path_length_m": 1.22
+    },
+    {
+      "synthetic": true,
+      "schema_version": "lmm_stop_pose_v1",
+      "record_type": "outcome",
+      "dataset_version": "synthetic_only",
+      "episode_id": "SYNTH_EP_0001",
+      "configuration_group_id": "SYNTH_CFG_0001",
+      "scene_id": "SYNTH_SCENE",
+      "object_id": "SYNTH_OBJ",
+      "object_category": "cube",
+      "task_instruction": "Move the cube from table to box.",
+      "random_seed": 7,
+      "policy_checkpoint_id": "synthetic_frozen_sft",
+      "policy_checkpoint_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "environment_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "collection_timestamp_utc": "2026-01-01T00:01:00Z",
+      "source": "habitat_sim",
+      "candidate_id": "SYNTH_CAND_03",
+      "trial_id": "SYNTH_TRIAL_03_R0",
+      "trial_status": "completed",
+      "outcome_timestamp_utc": "2026-01-01T00:02:00Z",
+      "reached_pregrasp": true,
+      "contacted_object": true,
+      "gripper_closed": true,
+      "stable_grasp": false,
+      "object_lift": false,
+      "lift_height_m": 0.01,
+      "stable_carry": false,
+      "object_detached": false,
+      "pick_success": false,
+      "place_success": null,
+      "full_task_success": null,
+      "ovmm_funnel": {
+        "find": true,
+        "grasp": false,
+        "carry": false,
+        "place": null,
+        "full": null
+      },
+      "event_steps": {
+        "contact": 12,
+        "grasp_attempt": 15
+      },
+      "failure_category": "unstable_grasp",
+      "failure_detail": "SYNTHETIC EXAMPLE; not a measured failure.",
+      "assisted_interaction": false,
+      "snap_desnap_used": false,
+      "diagnostic_ref": "diagnostics/SYNTH_TRIAL_03_R0.json",
+      "y_geometry": true,
+      "y_grasp": false,
+      "y_downstream": null,
+      "failure_timestamp_s": 17.5,
+      "quality_flags": {
+        "ik_invalidity": false,
+        "collision": false,
+        "unsafe_motion": false,
+        "timeout": false,
+        "assisted_interaction": false,
+        "snap_desnap_used": false,
+        "incomplete_episode": false,
+        "recorder_failure": false,
+        "missing_observation": false
+      }
+    }
+  ]
+}
